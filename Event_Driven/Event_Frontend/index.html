@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5f3ee" />
+    <title>PulseFlow | Fitness dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#top" aria-label="PulseFlow home">
+          <span class="brand-mark"><span></span><span></span><span></span></span>
+          <span>pulse<span>flow</span></span>
+        </a>
+        <nav aria-label="Main navigation">
+          <a class="nav-item active" href="#top"><span class="nav-icon">◈</span>Overview</a>
+          <a class="nav-item" href="#activity"><span class="nav-icon">⌁</span>Activity</a>
+          <a class="nav-item" href="#goals"><span class="nav-icon">◎</span>Goals</a>
+          <a class="nav-item" href="#workout"><span class="nav-icon">◉</span>Workout</a>
+          <a class="nav-item" href="#insights"><span class="nav-icon">◒</span>Insights</a>
+        </nav>
+        <div class="sidebar-footer">
+          <div class="help-card">
+            <span class="help-icon">?</span>
+            <div><strong>Need a hand?</strong><small>View your weekly insights</small></div>
+          </div>
+          <div class="profile-mini"><span class="avatar">S</span><span><strong id="profile-name">Sourabha</strong><small>Member</small></span><button class="more-button" aria-label="More profile options">•••</button></div>
+        </div>
+      </aside>
+
+      <main class="main-content" id="top">
+        <header class="topbar">
+          <div class="breadcrumb"><span>Workspace</span><b>/</b><strong>Overview</strong></div>
+          <div class="top-actions">
+            <label class="user-picker" for="user-id"><span>USER ID</span><input id="user-id" value="1503960366" aria-label="Dashboard user ID" /></label>
+            <button class="icon-button" id="refresh-button" aria-label="Refresh dashboard" title="Refresh dashboard">↻</button>
+            <div class="notification-wrap">
+              <button class="notification-button" id="notification-button" aria-label="Notifications" title="Notifications" aria-expanded="false"><span>♧</span><i></i><b id="notification-count">0</b></button>
+              <div class="notification-popover" id="notification-popover" hidden>
+                <div class="notification-heading"><strong>Notifications</strong><span id="notification-label">Latest updates</span></div>
+                <div id="notifications-list" class="notifications-list"><p class="notification-empty">No notifications yet.</p></div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <section class="welcome-row">
+          <div><p class="eyebrow">SUNDAY, 06 SEPTEMBER 2026</p><h1>Good morning, <em id="welcome-name">Sourabha</em></h1><p class="subtitle">Small steps add up. Here is your snapshot for today.</p></div>
+          <div class="sync-status"><span class="status-dot"></span><span id="sync-label">Syncing latest data</span></div>
+        </section>
+
+        <section class="hero-grid" id="goals">
+          <article class="goal-panel">
+            <div class="panel-heading"><div><p class="eyebrow">TODAY'S FOCUS</p><h2>Step into your goal</h2></div><span class="date-chip" id="activity-date">Today</span></div>
+            <div class="goal-content">
+              <div class="ring-wrap"><svg class="progress-ring" viewBox="0 0 220 220" aria-label="Step goal progress"><circle class="ring-track" cx="110" cy="110" r="87"></circle><circle class="ring-value" id="goal-ring" cx="110" cy="110" r="87"></circle></svg><div class="ring-label"><strong id="goal-percent">0%</strong><span>complete</span></div></div>
+              <div class="goal-copy"><span class="goal-kicker">DAILY STEPS</span><div class="goal-number"><strong id="steps-value">0</strong><span>/ <b id="steps-target">10,000</b></span></div><p id="goal-message">Your next walk is waiting.</p><div class="goal-meta"><span class="goal-meta-icon">↗</span><span><strong id="steps-left">10,000</strong> steps to go</span></div></div>
+            </div>
+          </article>
+          <article class="motivation-panel"><span class="sun-mark">✦</span><p class="eyebrow">A LITTLE MOMENTUM</p><h2>Move your body,<br /><em>clear your mind.</em></h2><div class="quote-line"></div><p class="quote">“The secret of getting ahead is getting started.”</p><span class="quote-author">— Mark Twain</span></article>
+        </section>
+
+        <section class="section-heading" id="activity"><div><p class="eyebrow">YOUR NUMBERS</p><h2>Today's activity</h2></div><span class="updated-label" id="updated-label">Waiting for data</span></section>
+        <section class="metric-grid">
+          <article class="metric-card steps-card"><div class="metric-top"><span class="metric-icon">⌁</span><span class="trend positive" id="steps-trend">Today</span></div><span class="metric-label">STEPS</span><strong class="metric-value" id="metric-steps">0</strong><span class="metric-foot">steps walked</span><div class="mini-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></article>
+          <article class="metric-card calories-card"><div class="metric-top"><span class="metric-icon">✦</span><span class="trend warm">Latest</span></div><span class="metric-label">ACTIVE CALORIES</span><strong class="metric-value" id="metric-calories">0</strong><span class="metric-foot">kcal burned</span><div class="calorie-line"><span></span></div></article>
+          <article class="metric-card distance-card"><div class="metric-top"><span class="metric-icon">➚</span><span class="trend cool">Latest</span></div><span class="metric-label">DISTANCE</span><strong class="metric-value" id="metric-distance">0.00</strong><span class="metric-foot">kilometres covered</span><div class="distance-route"><span></span><span></span><span></span><span></span></div></article>
+        </section>
+
+        <section class="section-heading" id="workout"><div><p class="eyebrow">TRAINING</p><h2>Workout session</h2></div><span class="updated-label" id="workout-status-label">No active session</span></section>
+        <section class="workout-grid">
+          <article class="workout-panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">LIVE SESSION</p><h2 id="workout-title">Ready when you are</h2></div>
+              <span class="date-chip" id="workout-chip">IDLE</span>
+            </div>
+            <div class="workout-controls">
+              <label class="workout-type-picker" for="workout-type"><span>WORKOUT TYPE</span>
+                <select id="workout-type">
+                  <option value="running">Running</option>
+                  <option value="cycling">Cycling</option>
+                  <option value="walking">Walking</option>
+                  <option value="strength">Strength</option>
+                  <option value="hiit">HIIT</option>
+                  <option value="yoga">Yoga</option>
+                  <option value="swimming">Swimming</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <button class="workout-button start" id="workout-start" type="button">Start workout</button>
+              <button class="workout-button ghost" id="workout-pause" type="button" hidden>Pause</button>
+              <button class="workout-button danger" id="workout-stop" type="button" hidden>Stop &amp; finish</button>
+            </div>
+            <div class="workout-live" id="workout-live" hidden>
+              <div class="live-stat"><span>HEART RATE</span><strong id="live-hr">--</strong><small>bpm now</small></div>
+              <div class="live-stat"><span>AVERAGE HR</span><strong id="live-avg-hr">--</strong><small>bpm</small></div>
+              <div class="live-stat"><span>CALORIES</span><strong id="live-calories">0</strong><small>kcal burned</small></div>
+              <div class="live-stat"><span>DURATION</span><strong id="live-duration">00:00</strong><small>minutes:seconds</small></div>
+            </div>
+            <p class="workout-hint" id="workout-hint">Pick a workout type and press start. Live heart rate and calories stream to the event bus while you train.</p>
+            <p class="error-message" id="workout-error" role="alert"></p>
+          </article>
+
+          <article class="workout-summary-panel">
+            <div class="section-heading compact"><div><p class="eyebrow">AFTER THE WORKOUT</p><h2>Recommendations</h2></div><span class="small-chip" id="recommendation-count">Waiting</span></div>
+            <div class="workout-summary" id="workout-summary" hidden>
+              <div><span>Duration</span><strong id="summary-duration">0 min</strong></div>
+              <div><span>Calories</span><strong id="summary-calories">0</strong></div>
+              <div><span>Avg HR</span><strong id="summary-hr">0</strong></div>
+            </div>
+            <div id="recommendations-list" class="recommendations-list"><p class="empty-goals">Finish a workout to get personalized recommendations here.</p></div>
+          </article>
+        </section>
+
+        <section class="lower-grid" id="insights">
+          <article class="insight-panel"><div class="section-heading compact"><div><p class="eyebrow">WEEKLY RHYTHM</p><h2>Your average day</h2></div><span class="small-chip">Last 7 days</span></div><div class="insight-stats"><div><span>Steps</span><strong id="average-steps">0</strong><small>per day</small></div><div><span>Active minutes</span><strong id="active-minutes">0</strong><small>per day</small></div><div><span>Sleep</span><strong id="sleep-hours">0h 00m</strong><small>average</small></div></div></article>
+          <article class="goal-list-panel"><div class="section-heading compact"><div><p class="eyebrow">KEEP GOING</p><h2>Active goals</h2></div><span class="small-chip" id="goal-count">0 goals</span></div><div id="goals-list" class="goals-list"><div class="empty-goals">Your goals will appear here after syncing.</div></div></article>
+        </section>
+        <p class="error-message" id="error-message" role="alert"></p>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>
