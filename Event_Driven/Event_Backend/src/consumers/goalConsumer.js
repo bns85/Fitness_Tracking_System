@@ -25,6 +25,7 @@ function initGoalConsumers() {
       // Invalidate Cache for this user so next dashboard read gets latest numbers (CQRS Cache-Aside)
       const cacheKey = `dashboard:${userId}:${today.toISOString().slice(0, 10)}`;
       await cache.del(cacheKey);
+      await cache.del(`dashboard:${userId}`);
 
       // Update or create today's fitness record atomically in DB
       const fitnessRecord = await FitnessData.findOneAndUpdate(

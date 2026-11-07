@@ -1,6 +1,9 @@
 const { eventBus, EVENTS } = require("../utils/eventBus");
 const Workout = require("../models/Workout");
 const Notification = require("../models/Notification");
+const FitnessData = require("../models/FitnessData");
+const Goal = require("../models/Goal");
+const cache = require("../utils/cache");
 
 let isInitialized = false;
 
@@ -55,9 +58,11 @@ function initWorkoutConsumers() {
       const {
         workoutId,
         userId,
-        durationMinutes,
-        caloriesBurned,
-        avgHeartRate,
+        durationMinutes = 0,
+        caloriesBurned = 0,
+        avgHeartRate = 0,
+        steps = 0,
+        distanceKm = 0,
       } = data;
 
       console.log(
@@ -71,6 +76,63 @@ function initWorkoutConsumers() {
       });
 
       await Workout.findByIdAndUpdate(workoutId, { recommendations });
+
+      // ----------------------------------------------------
+      // Story 4: Aggregate into daily FitnessData & Invalidate Cache
+      // ----------------------------------------------------
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const stepsToAdd = parseInt(steps, 10) || 0;
+      const caloriesToAdd = Math.round(parseFloat(caloriesBurned)) || 0;
+      const distanceToAdd = Math.round((parseFloat(distanceKm) || 0) * 100) / 100;
+      const activeMinutesToAdd = Math.round(parseFloat(durationMinutes)) || 0;
+
+      if (stepsToAdd > 0 || caloriesToAdd > 0 || activeMinutesToAdd > 0) {
+        const updatedFitness = await FitnessData.findOneAndUpdate(
+          { userId, date: { $gte: today } },
+          {
+            $inc: {
+              totalSteps: stepsToAdd,
+              calories: caloriesToAdd,
+              totalDistance: distanceToAdd,
+              veryActiveMinutes: activeMinutesToAdd,
+            },
+            $setOnInsert: { userId, date: today },
+          },
+          { upsert: true, new: true }
+        );
+
+        console.log(
+          `📊 [FITNESS AGGREGATE] Updated daily fitness for user ${userId}: +${stepsToAdd} steps, +${caloriesToAdd} kcal, +${activeMinutesToAdd} active mins (Total steps today: ${updatedFitness.totalSteps})`
+        );
+
+        // Check active goals if steps or calories increased
+        if (stepsToAdd > 0) {
+          const activeStepGoals = await Goal.find({ userId, type: "steps", achieved: false });
+          for (const goal of activeStepGoals) {
+            goal.current = updatedFitness.totalSteps;
+            if (updatedFitness.totalSteps >= goal.target) {
+              goal.achieved = true;
+              await goal.save();
+              eventBus.publish(EVENTS.GOAL_REACHED, {
+                userId,
+                goalType: "steps",
+                target: goal.target,
+                current: updatedFitness.totalSteps,
+              });
+            } else {
+              await goal.save();
+            }
+          }
+        }
+      }
+
+      // Evict Redis dashboard cache so frontend reads fresh numbers immediately
+      const todayStr = today.toISOString().slice(0, 10);
+      await cache.del(`dashboard:${userId}`);
+      await cache.del(`dashboard:${userId}:${todayStr}`);
+      console.log(`🧹 [CACHE] Invalidation completed for user ${userId}`);
 
       eventBus.publish(EVENTS.RECOMMENDATION_GENERATED, {
         userId,

@@ -2,6 +2,7 @@ const FitnessData = require("../models/FitnessData");
 const HeartRate = require("../models/HeartRate");
 const Sleep = require("../models/Sleep");
 const Goal = require("../models/Goal");
+const Workout = require("../models/Workout");
 const cache = require("../utils/cache");
 
 const getDashboardSummary = async (req, res) => {
@@ -70,6 +71,11 @@ const getDashboardSummary = async (req, res) => {
     // Get active goals
     const goals = await Goal.find({ userId, achieved: false });
 
+    // Get recent completed workouts (Story 4: dashboard workout summaries)
+    const recentWorkouts = await Workout.find({ userId, status: "completed" })
+      .sort({ endTime: -1 })
+      .limit(5);
+
     const summary = todayData[0] || {};
     const hr = heartRateStats[0] || {};
     const sl = sleepStats[0] || {};
@@ -127,6 +133,15 @@ const getDashboardSummary = async (req, res) => {
         latestMinutesAsleep: sl.latestMinutesAsleep || 0,
       },
       goals: goalProgress,
+      recentWorkouts: recentWorkouts.map((w) => ({
+        workoutId: String(w._id),
+        workoutType: w.workoutType,
+        durationMinutes: w.durationMinutes,
+        caloriesBurned: w.caloriesBurned,
+        avgHeartRate: w.avgHeartRate,
+        endTime: w.endTime,
+        recommendations: w.recommendations,
+      })),
     };
 
     await cache.set(cacheKey, dashboardData);

@@ -235,6 +235,7 @@ const stopWorkout = async (req, res) => {
       avgHeartRate: summary.avgHeartRate,
       maxHeartRate: summary.maxHeartRate,
       steps: summary.steps,
+      distanceKm: summary.distanceKm || workout.distanceKm || 0,
       startTime: workout.startTime,
       endTime: workout.endTime,
     });

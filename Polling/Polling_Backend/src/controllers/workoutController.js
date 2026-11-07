@@ -1,5 +1,7 @@
 const Workout = require("../models/Workout");
 const Notification = require("../models/Notification");
+const FitnessData = require("../models/FitnessData");
+const cache = require("../utils/cache");
 
 /**
  * POLLING ARCHITECTURE — No EventBus used.
@@ -156,6 +158,29 @@ const stopWorkout = async (req, res) => {
     workout.avgHeartRate = computedAvgHR;
     workout.recommendations = recommendations;
     await workout.save();
+
+    // Story 4: Aggregate into daily FitnessData and clear dashboard cache
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    try {
+      await FitnessData.findOneAndUpdate(
+        { userId, date: { $gte: today } },
+        {
+          $inc: {
+            calories: finalCalories,
+            veryActiveMinutes: durationMinutes,
+          },
+          $setOnInsert: { userId, date: today },
+        },
+        { upsert: true, new: true }
+      );
+    } catch (dbErr) {
+      console.warn("[POLL] Could not update FitnessData aggregate:", dbErr.message);
+    }
+
+    await cache.del(`dashboard:${userId}`);
+    await cache.del(`dashboard:${userId}:${today.toISOString().slice(0, 10)}`);
 
     // Create in-app notification (client will poll /api/notifications/:userId/poll to see it)
     await Notification.create({

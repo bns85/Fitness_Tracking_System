@@ -16,7 +16,7 @@ app.use(cors());
 app.use(express.json());
 
 // Serve frontend static files
-const frontendPath = path.join(__dirname, "../../Story1_Event_Frontend");
+const frontendPath = path.join(__dirname, "../../Event_Frontend");
 app.use(express.static(frontendPath));
 
 // API Routes

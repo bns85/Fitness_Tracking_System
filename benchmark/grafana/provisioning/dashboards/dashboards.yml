@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: "ECS351 Benchmarks"
+    folder: "ECS351"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 5
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
