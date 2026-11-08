@@ -13,6 +13,12 @@ services:
       - ./benchmark/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
       - "9090:9090"
+    extra_hosts:
+      - "event-app:host-gateway"
+      - "polling-app:host-gateway"
+      - "loadgen-event:host-gateway"
+      - "loadgen-polling:host-gateway"
+      - "cadvisor:host-gateway"
     networks:
       - benchmark-net
 

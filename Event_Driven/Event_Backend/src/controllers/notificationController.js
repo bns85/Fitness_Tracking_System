@@ -1,5 +1,10 @@
 const Notification = require("../models/Notification");
 const { eventBus, EVENTS } = require("../utils/eventBus");
+let notificationListenersGauge = null;
+try {
+  const { notificationListeners } = require("../metrics");
+  notificationListenersGauge = notificationListeners;
+} catch (e) {}
 
 // ============================================================
 // 1. Create a notification (existing from Sprint 1)
@@ -63,6 +68,9 @@ const streamNotifications = (req, res) => {
   res.flushHeaders();
 
   console.log(`📡 [SSE] Client connected for user ${userId}`);
+  if (notificationListenersGauge) {
+    notificationListenersGauge.inc();
+  }
 
   // Send a heartbeat every 30 seconds to keep connection alive
   const heartbeat = setInterval(() => {
@@ -83,6 +91,9 @@ const streamNotifications = (req, res) => {
   // Cleanup when client disconnects
   req.on("close", () => {
     console.log(`🔌 [SSE] Client disconnected for user ${userId}`);
+    if (notificationListenersGauge) {
+      notificationListenersGauge.dec();
+    }
     clearInterval(heartbeat);
     eventBus.removeListener(EVENTS.NOTIFICATION_CREATED, onNotification);
     res.end();

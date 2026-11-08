@@ -9,7 +9,11 @@ const telemetryRoutes = require("./routes/telemetry");
 const workoutRoutes = require("./routes/workout");
 const { initGoalConsumers } = require("./consumers/goalConsumer");
 const { initWorkoutConsumers } = require("./consumers/workoutConsumer");
+const { register, metricsMiddleware } = require("./metrics");
 const app = express();
+
+// Metrics Middleware (tracks http_request_duration_seconds)
+app.use(metricsMiddleware);
 
 // Middleware
 app.use(cors());
@@ -24,10 +28,22 @@ app.use("/api", dashboardRoutes);
 app.use("/api", notificationRoutes);
 app.use("/api", telemetryRoutes);
 app.use("/api", workoutRoutes);
+app.use("/", telemetryRoutes);
+app.use("/", notificationRoutes);
 
 // Serve frontend for root
 app.get("/", (req, res) => {
   res.sendFile(path.join(frontendPath, "index.html"));
+});
+
+// Prometheus Metrics Endpoint
+app.get("/metrics", async (req, res) => {
+  try {
+    res.set("Content-Type", register.contentType);
+    res.end(await register.metrics());
+  } catch (err) {
+    res.status(500).end(err.message);
+  }
 });
 
 // Health check

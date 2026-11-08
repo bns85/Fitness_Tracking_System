@@ -1,4 +1,9 @@
 const EventEmitter = require("events");
+let eventsPublishedCounter = null;
+try {
+  const { eventsPublished } = require("../metrics");
+  eventsPublishedCounter = eventsPublished;
+} catch (e) {}
 
 class EventBus extends EventEmitter {
   constructor() {
@@ -7,6 +12,9 @@ class EventBus extends EventEmitter {
   }
 
   publish(eventName, data) {
+    if (eventsPublishedCounter) {
+      eventsPublishedCounter.inc({ event: eventName });
+    }
     console.log(`[EVENT] ${eventName}:`, JSON.stringify(data).slice(0, 100));
     this.emit(eventName, data);
   }

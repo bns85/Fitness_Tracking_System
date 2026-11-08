@@ -8,8 +8,11 @@ const dashboardRoutes = require("./routes/dashboard");
 const notificationRoutes = require("./routes/notification");
 const workoutRoutes = require("./routes/workout");
 const { startGoalPollingWorker } = require("./workers/goalPollingWorker");
+const { register, metricsMiddleware } = require("./metrics");
 
 const app = express();
+
+app.use(metricsMiddleware);
 
 // Serve Polling frontend
 const frontendPath = path.join(__dirname, "../../Polling_Frontend");
@@ -28,10 +31,22 @@ app.use(express.json());
 app.use("/api", dashboardRoutes);
 app.use("/api", notificationRoutes);
 app.use("/api", workoutRoutes);
+app.use("/", dashboardRoutes);
+app.use("/", notificationRoutes);
 
 // Frontend route
 app.get("/", (req, res) => {
   res.sendFile(path.join(frontendPath, "index.html"));
+});
+
+// Prometheus Metrics Endpoint
+app.get("/metrics", async (req, res) => {
+  try {
+    res.set("Content-Type", register.contentType);
+    res.end(await register.metrics());
+  } catch (err) {
+    res.status(500).end(err.message);
+  }
 });
 
 app.get("/health", (req, res) => {
