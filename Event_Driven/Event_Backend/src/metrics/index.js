@@ -1,4 +1,5 @@
 const client = require("prom-client");
+const mongoose = require("mongoose");
 
 // Initialize Prometheus Register
 const register = new client.Registry();
@@ -41,6 +42,40 @@ const notificationListeners = new client.Gauge({
   help: "Number of active SSE notification listeners",
   registers: [register],
 });
+
+// ---------------------------------------------------------------------------
+// Global Mongoose plugin — MUST run before any model is compiled.
+// server.js requires this module FIRST so the plugin is registered first.
+// ---------------------------------------------------------------------------
+function dbOperationsPlugin(schema) {
+  const track = (op) => {
+    schema.pre(op, function () {
+      try {
+        dbOperations.inc({ op });
+      } catch (e) {
+        /* metrics must never break requests */
+      }
+    });
+  };
+
+  [
+    "find",
+    "findOne",
+    "findOneAndUpdate",
+    "findOneAndDelete",
+    "updateOne",
+    "updateMany",
+    "deleteOne",
+    "deleteMany",
+    "count",
+    "countDocuments",
+    "aggregate",
+    "insertMany",
+    "save",
+  ].forEach(track);
+}
+
+mongoose.plugin(dbOperationsPlugin);
 
 // Express Middleware to measure request duration
 function metricsMiddleware(req, res, next) {

@@ -1,4 +1,7 @@
 
+// metrics MUST be the first require: registers the Mongoose db-operations
+// plugin before any model schema is compiled by the route requires below.
+const { register, metricsMiddleware } = require("./metrics");
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
@@ -8,7 +11,6 @@ const dashboardRoutes = require("./routes/dashboard");
 const notificationRoutes = require("./routes/notification");
 const workoutRoutes = require("./routes/workout");
 const { startGoalPollingWorker } = require("./workers/goalPollingWorker");
-const { register, metricsMiddleware } = require("./metrics");
 
 const app = express();
 
