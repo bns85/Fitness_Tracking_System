@@ -14,6 +14,7 @@ const FitnessData = require("../models/FitnessData");
 const Notification = require("../models/Notification");
 const config = require("../config");
 
+const QUIET = process.env.QUIET === "1";
 let pollIntervalHandle = null;
 
 function isDBConnected() {
@@ -58,7 +59,7 @@ async function runGoalPollingCycle() {
             message: `Awesome job! You reached your goal of ${goal.target.toLocaleString()} steps with ${fitness.totalSteps.toLocaleString()} steps today! 🏆`,
             read: false,
           });
-          console.log(`[POLL WORKER] Detected goal achieved for user ${goal.userId} (${fitness.totalSteps}/${goal.target})`);
+          if (!QUIET) console.log(`[POLL WORKER] Detected goal achieved for user ${goal.userId} (${fitness.totalSteps}/${goal.target})`);
         }
       }
     }
@@ -69,7 +70,7 @@ async function runGoalPollingCycle() {
 
 function startGoalPollingWorker() {
   if (pollIntervalHandle) return;
-  console.log(`⏱️ [POLLING WORKER] Started Goal Polling Worker (Interval: ${config.pollIntervalMs}ms)`);
+  if (!QUIET) console.log(`⏱️ [POLLING WORKER] Started Goal Polling Worker (Interval: ${config.pollIntervalMs}ms)`);
   pollIntervalHandle = setInterval(runGoalPollingCycle, config.pollIntervalMs);
 }
 

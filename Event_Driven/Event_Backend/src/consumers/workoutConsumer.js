@@ -5,6 +5,7 @@ const FitnessData = require("../models/FitnessData");
 const Goal = require("../models/Goal");
 const cache = require("../utils/cache");
 
+const QUIET = process.env.QUIET === "1";
 let isInitialized = false;
 
 const buildRecommendations = ({
@@ -48,7 +49,7 @@ const buildRecommendations = ({
 function initWorkoutConsumers() {
   if (isInitialized) return;
   isInitialized = true;
-  console.log("🏋️ [EVENT CONSUMER] Initializing Workout Event Listeners...");
+  if (!QUIET) console.log("🏋️ [EVENT CONSUMER] Initializing Workout Event Listeners...");
 
   // ----------------------------------------------------
   // 1. Recommendation Engine: WORKOUT_COMPLETED Listener

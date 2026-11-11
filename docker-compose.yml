@@ -1,6 +1,128 @@
 version: "3.8"
 
+# ---------------------------------------------------------------------------
+# ECS351 benchmark stack — controlled variables (Task 1)
+#   * Separate MongoDB + Redis instance per variant (isolation)
+#   * CACHE_TTL=300 on BOTH apps (defaults were 300 event vs 30 polling)
+#   * QUIET=1 on BOTH apps (suppress per-event console noise during runs)
+#   * Each app container limited to 1 CPU
+#   * Apps always connect to real Mongo/Redis (no mock fallback in this stack)
+# ---------------------------------------------------------------------------
+
 services:
+  # ---------- Event-driven variant data stores ----------
+  mongo-event:
+    image: mongo:7
+    container_name: mongo-event
+    restart: unless-stopped
+    volumes:
+      - mongo-event-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - benchmark-net
+
+  redis-event:
+    image: redis:7-alpine
+    container_name: redis-event
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - benchmark-net
+
+  # ---------- Polling variant data stores ----------
+  mongo-polling:
+    image: mongo:7
+    container_name: mongo-polling
+    restart: unless-stopped
+    volumes:
+      - mongo-polling-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - benchmark-net
+
+  redis-polling:
+    image: redis:7-alpine
+    container_name: redis-polling
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - benchmark-net
+
+  # ---------- Applications (1 CPU each) ----------
+  event-app:
+    build: ./Event_Driven/Event_Backend
+    container_name: event-app
+    restart: unless-stopped
+    cpus: 1
+    environment:
+      PORT: "5001"
+      MONGODB_URI: "mongodb://mongo-event:27017/fitness_event"
+      REDIS_HOST: "redis-event"
+      REDIS_PORT: "6379"
+      CACHE_TTL: "300"
+      QUIET: "1"
+    ports:
+      - "5001:5001"
+    depends_on:
+      mongo-event:
+        condition: service_healthy
+      redis-event:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5001/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - benchmark-net
+
+  polling-app:
+    build: ./Polling/Polling_Backend
+    container_name: polling-app
+    restart: unless-stopped
+    cpus: 1
+    environment:
+      PORT: "5002"
+      MONGODB_URI: "mongodb://mongo-polling:27017/fitness_polling"
+      REDIS_HOST: "redis-polling"
+      REDIS_PORT: "6379"
+      CACHE_TTL: "300"
+      QUIET: "1"
+      POLL_INTERVAL_MS: "5000"
+    ports:
+      - "5002:5002"
+    depends_on:
+      mongo-polling:
+        condition: service_healthy
+      redis-polling:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5002/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - benchmark-net
+
+  # ---------- Measurement stack ----------
   prometheus:
     image: prom/prometheus:v2.54.1
     container_name: benchmark-prometheus
@@ -14,11 +136,13 @@ services:
     ports:
       - "9090:9090"
     extra_hosts:
-      - "event-app:host-gateway"
-      - "polling-app:host-gateway"
+      - "loadgen:host-gateway"
       - "loadgen-event:host-gateway"
       - "loadgen-polling:host-gateway"
       - "cadvisor:host-gateway"
+    depends_on:
+      - event-app
+      - polling-app
     networks:
       - benchmark-net
 
@@ -44,3 +168,7 @@ services:
 networks:
   benchmark-net:
     driver: bridge
+
+volumes:
+  mongo-event-data:
+  mongo-polling-data:

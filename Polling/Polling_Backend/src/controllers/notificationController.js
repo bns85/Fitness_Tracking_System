@@ -4,6 +4,8 @@ const Goal = require("../models/Goal");
 const FitnessData = require("../models/FitnessData");
 const config = require("../config");
 
+const QUIET = process.env.QUIET === "1";
+
 // In-memory notifications store fallback when MongoDB is not connected
 const memNotifications = [];
 
@@ -51,7 +53,7 @@ async function checkAndTriggerGoalNotifications(userId) {
               message: `Awesome job! You reached your goal of ${goal.target.toLocaleString()} steps with ${currentSteps.toLocaleString()} steps today! 🏆`,
               read: false,
             });
-            console.log(`[POLL ALERT] In-app notification created for ${userId}: Goal reached (${currentSteps}/${goal.target})`);
+            if (!QUIET) console.log(`[POLL ALERT] In-app notification created for ${userId}: Goal reached (${currentSteps}/${goal.target})`);
             return notif;
           }
         }
@@ -267,7 +269,7 @@ const longPollNotifications = async (req, res) => {
   const startTime = Date.now();
   const pollIntervalCheckMs = 500;
 
-  console.log(`[LONG-POLL] Client started waiting for alerts (User: ${userId}, Timeout: ${timeoutMs}ms)`);
+  if (!QUIET) console.log(`[LONG-POLL] Client started waiting for alerts (User: ${userId}, Timeout: ${timeoutMs}ms)`);
 
   const timer = setInterval(async () => {
     try {

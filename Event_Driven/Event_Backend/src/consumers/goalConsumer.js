@@ -4,12 +4,13 @@ const FitnessData = require("../models/FitnessData");
 const Notification = require("../models/Notification");
 const cache = require("../utils/cache");
 
+const QUIET = process.env.QUIET === "1";
 let isInitialized = false;
 
 function initGoalConsumers() {
   if (isInitialized) return;
   isInitialized = true;
-  console.log("🚀 [EVENT CONSUMER] Initializing Step & Goal Event Listeners...");
+  if (!QUIET) console.log("🚀 [EVENT CONSUMER] Initializing Step & Goal Event Listeners...");
 
   // ----------------------------------------------------
   // 1. Consumer: STEP_UPDATED Listener
@@ -17,7 +18,7 @@ function initGoalConsumers() {
   eventBus.on(EVENTS.STEP_UPDATED, async (data) => {
     try {
       const { userId, steps, calories = 0, distance = 0 } = data;
-      console.log(`📡 [EVENT CONSUMER] STEP_UPDATED received for user ${userId}: +${steps} steps`);
+      if (!QUIET) console.log(`📡 [EVENT CONSUMER] STEP_UPDATED received for user ${userId}: +${steps} steps`);
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -50,7 +51,7 @@ function initGoalConsumers() {
           goal.achieved = true;
           await goal.save();
 
-          console.log(`🎯 [GOAL ACHIEVED] User ${userId} reached ${totalSteps} / ${goal.target} steps!`);
+          if (!QUIET) console.log(`🎯 [GOAL ACHIEVED] User ${userId} reached ${totalSteps} / ${goal.target} steps!`);
 
           // Publish GOAL_REACHED event to Event Bus
           eventBus.publish(EVENTS.GOAL_REACHED, {
@@ -74,7 +75,7 @@ function initGoalConsumers() {
   eventBus.on(EVENTS.GOAL_REACHED, async (data) => {
     try {
       const { userId, target, current } = data;
-      console.log(`🔔 [NOTIFICATION CONSUMER] Creating alert for user ${userId}...`);
+      if (!QUIET) console.log(`🔔 [NOTIFICATION CONSUMER] Creating alert for user ${userId}...`);
 
       const newNotification = await Notification.create({
         userId,
@@ -84,7 +85,7 @@ function initGoalConsumers() {
         read: false
       });
 
-      console.log(`✅ [NOTIFICATION CREATED] ID: ${newNotification._id}`);
+      if (!QUIET) console.log(`✅ [NOTIFICATION CREATED] ID: ${newNotification._id}`);
 
       // Publish NOTIFICATION_CREATED event for real-time SSE push
       eventBus.publish(EVENTS.NOTIFICATION_CREATED, {

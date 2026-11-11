@@ -1,4 +1,5 @@
 const EventEmitter = require("events");
+const QUIET = process.env.QUIET === "1";
 let eventsPublishedCounter = null;
 try {
   const { eventsPublished } = require("../metrics");
@@ -15,7 +16,9 @@ class EventBus extends EventEmitter {
     if (eventsPublishedCounter) {
       eventsPublishedCounter.inc({ event: eventName });
     }
-    console.log(`[EVENT] ${eventName}:`, JSON.stringify(data).slice(0, 100));
+    if (!QUIET) {
+      console.log(`[EVENT] ${eventName}:`, JSON.stringify(data).slice(0, 100));
+    }
     this.emit(eventName, data);
   }
 }

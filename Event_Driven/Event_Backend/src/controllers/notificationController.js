@@ -1,5 +1,6 @@
 const Notification = require("../models/Notification");
 const { eventBus, EVENTS } = require("../utils/eventBus");
+const QUIET = process.env.QUIET === "1";
 let notificationListenersGauge = null;
 try {
   const { notificationListeners } = require("../metrics");
@@ -67,7 +68,7 @@ const streamNotifications = (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.flushHeaders();
 
-  console.log(`📡 [SSE] Client connected for user ${userId}`);
+  if (!QUIET) console.log(`📡 [SSE] Client connected for user ${userId}`);
   if (notificationListenersGauge) {
     notificationListenersGauge.inc();
   }
@@ -80,7 +81,7 @@ const streamNotifications = (req, res) => {
   // Listen for NOTIFICATION_CREATED events on the EventBus
   const onNotification = (data) => {
     if (data.userId === userId) {
-      console.log(`📤 [SSE] Pushing notification to user ${userId}`);
+      if (!QUIET) console.log(`📤 [SSE] Pushing notification to user ${userId}`);
       res.write(`event: notification\n`);
       res.write(`data: ${JSON.stringify(data.notification)}\n\n`);
     }
@@ -90,7 +91,7 @@ const streamNotifications = (req, res) => {
 
   // Cleanup when client disconnects
   req.on("close", () => {
-    console.log(`🔌 [SSE] Client disconnected for user ${userId}`);
+    if (!QUIET) console.log(`🔌 [SSE] Client disconnected for user ${userId}`);
     if (notificationListenersGauge) {
       notificationListenersGauge.dec();
     }

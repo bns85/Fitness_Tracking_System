@@ -15,10 +15,20 @@ scrape_configs:
         labels:
           variant: "polling"
 
-  - job_name: "loadgen"
+  - job_name: "loadgen-event"
     static_configs:
-      - targets: ["loadgen-event:9100", "loadgen-polling:9100"]
+      - targets: ["loadgen-event:9100"]
+        labels:
+          variant: "event"
+
+  - job_name: "loadgen-polling"
+    static_configs:
+      - targets: ["loadgen-polling:9100"]
+        labels:
+          variant: "polling"
 
   - job_name: "cadvisor"
     static_configs:
       - targets: ["cadvisor:8080"]
+        labels:
+          variant: "cadvisor"
