@@ -130,7 +130,9 @@ function httpGet(urlStr) {
 }
 
 // ------------------------------------------------------------------ //
-// Event-driven worker: open SSE, ingest, wait for push, then sleep
+// Event-driven worker: open SSE, ingest, wait until END of cycle.
+// First GOAL_REACHED records latency; connection is NOT closed early
+// (premature destroy biased delivery times downward).
 // ------------------------------------------------------------------ //
 async function eventWorker(userId, cycleSteps) {
   return new Promise((resolve) => {
@@ -139,6 +141,14 @@ async function eventWorker(userId, cycleSteps) {
     let startMs    = null;
     let sseReq     = null;
     let buffer     = "";
+    let settled    = false;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      try { if (sseReq) sseReq.destroy(); } catch (_) {}
+      resolve();
+    };
 
     // --- open SSE connection BEFORE ingest so we don't miss the push ---
     sseReq = http.get(
@@ -158,8 +168,7 @@ async function eventWorker(userId, cycleSteps) {
                   const latency = (Date.now() - startMs) / 1000;
                   notifyDeliverySeconds.observe({ variant: "event" }, latency);
                   notifyDeliveredTotal.inc({ variant: "event" });
-                  sseReq.destroy();
-                  resolve();
+                  // Intentionally do NOT destroy SSE here — hold until cycle end.
                 }
               } catch (_) {}
             }
@@ -181,20 +190,19 @@ async function eventWorker(userId, cycleSteps) {
         loadgenErrorsTotal.inc({ variant: "event" });
       }
 
-      // Timeout: if no GOAL_REACHED within TIMEOUT_MS, give up
+      // Hold the listener open for the full cycle window, then settle.
       setTimeout(() => {
-        if (!notified) {
-          notifyTimeoutsTotal.inc({ variant: "event" });
-          sseReq.destroy();
-          resolve();
-        }
+        if (!notified) notifyTimeoutsTotal.inc({ variant: "event" });
+        finish();
       }, TIMEOUT_MS);
     }, 100);
   });
 }
 
 // ------------------------------------------------------------------ //
-// Polling worker: ingest then poll until has_new or timeout
+// Polling worker: ingest then poll until END of cycle.
+// First hasNew=true records latency; further polls still run so the
+// empty-poll rate reflects the full cycle, not just "until first hit".
 // ------------------------------------------------------------------ //
 async function pollingWorker(userId, cycleSteps) {
   let startMs = null;
@@ -210,9 +218,8 @@ async function pollingWorker(userId, cycleSteps) {
     return;
   }
 
-  // Poll until notification or timeout — connection closes after each GET
   const deadline = startMs + TIMEOUT_MS;
-  while (Date.now() < deadline && !notified) {
+  while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, POLL_MS));
     if (Date.now() >= deadline) break;
     try {
@@ -220,11 +227,15 @@ async function pollingWorker(userId, cycleSteps) {
       const res = await httpGet(`${POLLING_URL}/api/notifications/${userId}/poll`);
       let parsed;
       try { parsed = JSON.parse(res.body); } catch (_) { parsed = {}; }
-      if (parsed.has_new) {
-        notified = true;
-        const latency = (Date.now() - startMs) / 1000;
-        notifyDeliverySeconds.observe({ variant: "polling" }, latency);
-        notifyDeliveredTotal.inc({ variant: "polling" });
+      // API returns hasNew (camelCase); keep has_new as defensive fallback.
+      const hasNew = parsed.hasNew === true || parsed.has_new === true;
+      if (hasNew) {
+        if (!notified) {
+          notified = true;
+          const latency = (Date.now() - startMs) / 1000;
+          notifyDeliverySeconds.observe({ variant: "polling" }, latency);
+          notifyDeliveredTotal.inc({ variant: "polling" });
+        }
       } else {
         pollEmptyTotal.inc({ variant: "polling" });
       }

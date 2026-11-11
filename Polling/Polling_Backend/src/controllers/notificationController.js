@@ -3,6 +3,7 @@ const Notification = require("../models/Notification");
 const Goal = require("../models/Goal");
 const FitnessData = require("../models/FitnessData");
 const config = require("../config");
+const { pollResponses } = require("../metrics");
 
 const QUIET = process.env.QUIET === "1";
 
@@ -245,15 +246,21 @@ const pollNotifications = async (req, res) => {
       unreadCount = memNotifications.filter((n) => n.userId === userId && !n.read).length;
     }
 
-    res.json({
-      architecture: "POLLING",
-      pollIntervalMs: config.pollIntervalMs,
-      hasNew: notifications.length > 0,
-      newCount: notifications.length,
-      unreadCount,
-      notifications,
-      timestamp: new Date().toISOString(),
-    });
+      const hasNew = notifications.length > 0;
+      try {
+        pollResponses.inc({ has_new: hasNew ? "true" : "false" });
+      } catch (_) {
+        /* metrics must never break requests */
+      }
+      res.json({
+        architecture: "POLLING",
+        pollIntervalMs: config.pollIntervalMs,
+        hasNew,
+        newCount: notifications.length,
+        unreadCount,
+        notifications,
+        timestamp: new Date().toISOString(),
+      });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

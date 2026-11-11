@@ -24,13 +24,14 @@ Generated: 2026-11-11 (session checkpoint before push)
 - Prometheus loadgen jobs split with `variant` labels (`loadgen-event`, `loadgen-polling`).
 - Controlled variables documented in `benchmark/README.md`.
 
-### Task 2 — Fix broken instruments (PARTIAL — see §8)
+### Task 2 — Fix broken instruments (DONE — 2026-11-11)
 | Item | Status | Evidence |
 |---|---|---|
 | 2.1 `db_operations_total` | **DONE (code + live verify)** | Global Mongoose plugin in `src/metrics/index.js`; metrics is now the **first require** in both `server.js`. After rebuild: event shows `db_operations_total{op=find,save,...}`; polling shows `find,findOne,findOneAndUpdate,countDocuments`. |
 | 2.2 `notification_listeners` | **DONE (already correct; verified)** | Stream subscribes to `NOTIFICATION_CREATED`. Live test: **5 open SSE → gauge=5 → close → gauge=0**. |
-| 2.3 Loadgen bias (hold listener to end of cycle) | **NOT DONE** | `benchmark/loadgen.js` still closes SSE / stops polling on first notification. Also reads `has_new` but API returns `hasNew` (bug). Stub-server retest not run. |
-| 2.4 No business-logic changes | Held | Only metrics/QUIET/compose; no workout changes. |
+| 2.3 Loadgen bias + `hasNew` | **DONE (stub test PASS)** | `benchmark/loadgen.js`: SSE held until cycle end (sample hold ≈3079ms with TIMEOUT_MS=3000); polling continues after first `hasNew` (7 polls/user, 60 empty polls, 70 total); reads `hasNew` with `has_new` fallback. Stub harness: `TASK 2.3 STUB TEST: PASS`. |
+| 2.4 `poll_responses_total` | **DONE (live verify)** | `pollNotifications` now does `pollResponses.inc({has_new})`. Live: `poll_responses_total{has_new="false"} 2`. |
+| 2.5 No business-logic changes | Held | Only metrics/QUIET/compose/loadgen-measurement; no workout changes. |
 
 ---
 
@@ -38,7 +39,8 @@ Generated: 2026-11-11 (session checkpoint before push)
 
 | Task | Status |
 |---|---|
-| **2.3** Loadgen listener hold-until-cycle-end + `hasNew` field fix + stub retest | Pending |
+| **2.3** Loadgen listener hold-until-cycle-end + `hasNew` field fix + stub retest | **DONE** (stub PASS) |
+| **2.4** `poll_responses_total` increment | **DONE** (live verified) |
 | **3** Grafana dashboard fixes (colors, log-scale, baselines, empty-poll %, `or vector(0)`, cAdvisor labels, text panel, validation) | Pending |
 | **4** Real experiments E1–E4 (+ optional E5), `ENVIRONMENT.md`, screenshot instructions | Pending — **no CSVs exist yet** |
 | **5** `benchmark/analysis/aggregate.js` → `summary.csv` / `summary.md` | Pending |
@@ -105,14 +107,15 @@ POST traffic + GET dashboard → db_operations_total samples on BOTH :5001 and :
 
 ## 5. Errors / unresolved issues
 
-1. **Loadgen `has_new` vs API `hasNew`** — `benchmark/loadgen.js` checks `parsed.has_new`; polling API returns `hasNew`. Polling delivery detection in loadgen is broken until fixed (Task 2.3).
-2. **Loadgen early-close bias** — SSE destroyed on first GOAL_REACHED; polling loop exits on first hit (Task 2.3).
-3. **`poll_responses_total` never incremented** — counter defined in polling metrics but no `.inc()` in `pollNotifications` (needed for Task 3 empty-poll cross-check).
+1. ~~Loadgen `has_new` vs API `hasNew`~~ — **FIXED** (`hasNew` with fallback).
+2. ~~Loadgen early-close bias~~ — **FIXED** (hold until cycle end; stub PASS).
+3. ~~`poll_responses_total` never incremented~~ — **FIXED** (live verified).
 4. **Prometheus targets down:** `loadgen-event`, `loadgen-polling` (loadgen not running), `cadvisor` (not installed; Docker Desktop → expect empty; label “Linux only”).
 5. **Transient Redis ECONNREFUSED** in early app logs (container start race); subsequent logs show `Redis connected`. Watch during long runs.
 6. **No experiment CSVs** — `benchmark/results/` only has empty `screenshots/`.
 7. **Grafana dashboard untested for Task 3 fixes** — not yet audited panel-by-panel.
 8. **Host Redis on :6379** (native) is unrelated to benchmark Redis (in-network only). Do not confuse them.
+9. **Git push blocked:** HTTPS remote, no credential helper, no `gh` CLI → `fatal: could not read Username for 'https://github.com'`. Local commits not pushed.
 
 ---
 
@@ -147,24 +150,26 @@ POST traffic + GET dashboard → db_operations_total samples on BOTH :5001 and :
 
 ## 8. Exact next steps (in order)
 
-1. **Commit + push** pending metrics/server changes and this PROGRESS.md (checkpoint).
-2. **Task 2.3:** Fix `benchmark/loadgen.js`:
-   - Hold SSE / polling until end of cycle (do not close on first notification).
-   - Read `hasNew` (and keep `has_new` as fallback).
-   - Retest against a local stub server before any real run.
-3. **Task 2 (finish):** Add `pollResponses.inc({has_new})` in polling `pollNotifications`.
+1. ~~Commit + push pending metrics/server changes and this PROGRESS.md~~ — committed; **push blocked on GitHub auth**.
+2. ~~**Task 2.3:** Fix `benchmark/loadgen.js`~~ — DONE (stub PASS).
+3. ~~**Task 2 (finish):** Add `pollResponses.inc`~~ — DONE (live verified).
 4. **Task 3:** Audit and fix `benchmark/grafana/dashboards/event-vs-polling.json` per spec; validate JSON/uids/metric names.
 5. **Task 4:** Write `benchmark/results/ENVIRONMENT.md` (machine specs + docker limits); reset DBs between runs; run E1 (10/50/100/200 × 3 runs), E2 ablation, E3 higher load, E4 durability; save CSVs under `benchmark/results/`.
 6. **Task 5:** `benchmark/analysis/aggregate.js` → `summary.csv` + `summary.md`.
 7. **Task 6:** Write the six docs under `benchmark/docs/`.
 8. Final checklist with exact reproduce commands.
+9. Push all commits once GitHub credentials are available.
 
 ---
 
 ## 9. Git checkpoint (this session)
 
 - Branch: `main` (tracks `origin/main`)
-- Already pushed earlier: `4b618d6`, `5face94`, `71f2fcc`, …
-- Local ahead before this checkpoint: `2c305fc` (compose/QUIET)
-- This checkpoint adds: metrics plugin + first-require + PROGRESS.md
+- Already on GitHub (origin): up through `5face94` / `71f2fcc` (see origin/main)
+- Local commits **not pushed** (auth failure):
+  - `4b618d6` fix(loadgen): real SSE/poll measurement
+  - `2c305fc` feat(compose): real per-variant Mongo/Redis, equal CACHE_TTL=300, QUIET=1, 1-CPU
+  - `9af94df` fix(metrics): mongoose db_operations plugin as first require; add PROGRESS checkpoint
+  - (this commit) Task 2.3 loadgen hold + hasNew + pollResponses.inc + PROGRESS update
 - `.env` files: **gitignored**, not tracked; no secrets in repo (`git ls-files` clean)
+- Unstaged noise: `benchmark/grafana/dashboards/event-vs-polling.json` CRLF-only rewrite — leave uncommitted
