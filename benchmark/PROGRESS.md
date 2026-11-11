@@ -41,7 +41,7 @@ Generated: 2026-11-11 (session checkpoint before push)
 |---|---|
 | **2.3** Loadgen listener hold-until-cycle-end + `hasNew` field fix + stub retest | **DONE** (stub PASS) |
 | **2.4** `poll_responses_total` increment | **DONE** (live verified) |
-| **3** Grafana dashboard fixes (colors, log-scale, baselines, empty-poll %, `or vector(0)`, cAdvisor labels, text panel, validation) | Pending |
+| **3** Grafana dashboard fixes | **DONE** (generator + JSON validated; Grafana shows 24 panels) |
 | **4** Real experiments E1–E4 (+ optional E5), `ENVIRONMENT.md`, screenshot instructions | Pending — **no CSVs exist yet** |
 | **5** `benchmark/analysis/aggregate.js` → `summary.csv` / `summary.md` | Pending |
 | **6** Docs: REPORT.md, ADR-001.md, ARCHITECTURE.md, DEMO.md, NUMBERS_FOR_SLIDES.md, QA.md | Pending |
@@ -113,9 +113,10 @@ POST traffic + GET dashboard → db_operations_total samples on BOTH :5001 and :
 4. **Prometheus targets down:** `loadgen-event`, `loadgen-polling` (loadgen not running), `cadvisor` (not installed; Docker Desktop → expect empty; label “Linux only”).
 5. **Transient Redis ECONNREFUSED** in early app logs (container start race); subsequent logs show `Redis connected`. Watch during long runs.
 6. **No experiment CSVs** — `benchmark/results/` only has empty `screenshots/`.
-7. **Grafana dashboard untested for Task 3 fixes** — not yet audited panel-by-panel.
+7. ~~Grafana dashboard untested for Task 3 fixes~~ — **DONE** (regenerated, validated, loaded in Grafana; no visual browser check).
 8. **Host Redis on :6379** (native) is unrelated to benchmark Redis (in-network only). Do not confuse them.
 9. **Git push blocked:** HTTPS remote, no credential helper, no `gh` CLI → `fatal: could not read Username for 'https://github.com'`. Local commits not pushed.
+10. **Empty-poll true % not yet measured** under a full E1 run — historical 84% figure is invalid (instrument bugs fixed).
 
 ---
 
@@ -153,7 +154,7 @@ POST traffic + GET dashboard → db_operations_total samples on BOTH :5001 and :
 1. ~~Commit + push pending metrics/server changes and this PROGRESS.md~~ — committed; **push blocked on GitHub auth**.
 2. ~~**Task 2.3:** Fix `benchmark/loadgen.js`~~ — DONE (stub PASS).
 3. ~~**Task 2 (finish):** Add `pollResponses.inc`~~ — DONE (live verified).
-4. **Task 3:** Audit and fix `benchmark/grafana/dashboards/event-vs-polling.json` per spec; validate JSON/uids/metric names.
+4. ~~**Task 3:** Audit and fix Grafana dashboard~~ — DONE (regenerate via `python3 benchmark/generate_dashboard.py`).
 5. **Task 4:** Write `benchmark/results/ENVIRONMENT.md` (machine specs + docker limits); reset DBs between runs; run E1 (10/50/100/200 × 3 runs), E2 ablation, E3 higher load, E4 durability; save CSVs under `benchmark/results/`.
 6. **Task 5:** `benchmark/analysis/aggregate.js` → `summary.csv` + `summary.md`.
 7. **Task 6:** Write the six docs under `benchmark/docs/`.

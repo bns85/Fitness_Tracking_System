@@ -80,7 +80,7 @@ mongoose.plugin(dbOperationsPlugin);
 // Express Middleware to measure request duration
 function metricsMiddleware(req, res, next) {
   // Exclude continuous SSE stream and metrics endpoint from request duration
-  if (req.path === "/metrics" || req.path === "/api/notifications/stream") {
+  if (req.path === "/metrics" || req.path.includes("/stream")) {
     return next();
   }
 

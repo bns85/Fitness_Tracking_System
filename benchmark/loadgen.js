@@ -130,6 +130,23 @@ function httpGet(urlStr) {
 }
 
 // ------------------------------------------------------------------ //
+// Setup: each cycle uses a FRESH userId and ensures an active goal so
+// GOAL_REACHED can fire (polling allows one notif/user/day; event marks
+// goals achieved). Goal POST is setup traffic, not part of delivery timing.
+// ------------------------------------------------------------------ //
+let cycleSeq = 0;
+
+async function ensureGoal(userId, target) {
+  // Both backends expose POST /api/goals {userId,type,target}.
+  try {
+    await httpPost(`${EVENT_URL}/api/goals`, { userId, type: "steps", target });
+  } catch (_) { /* setup best-effort */ }
+  try {
+    await httpPost(`${POLLING_URL}/api/goals`, { userId, type: "steps", target });
+  } catch (_) { /* setup best-effort */ }
+}
+
+// ------------------------------------------------------------------ //
 // Event-driven worker: open SSE, ingest, wait until END of cycle.
 // First GOAL_REACHED records latency; connection is NOT closed early
 // (premature destroy biased delivery times downward).
@@ -277,15 +294,19 @@ setInterval(() => {
 // ------------------------------------------------------------------ //
 const WORKER_CAP = 20;
 
-setInterval(() => {
+setInterval(async () => {
   const n = Math.min(currentUsers, WORKER_CAP);
-  // Each user gets enough steps to reliably reach their goal this cycle.
-  // Using 500 steps per cycle; a typical daily goal is 10 000 steps, so
-  // after ~20 cycles the goal fires. Keeps the notification rate realistic.
+  // Fresh user per cycle so GOAL_REACHED can fire (one notif/user/day on
+  // polling; event marks goals achieved). Goal target = cycleSteps so the
+  // first ingest reaches it. 500 steps/cycle keeps notification rate realistic.
   const cycleSteps = 500;
+  cycleSeq += 1;
+  const batch = cycleSeq;
 
   for (let i = 0; i < n; i++) {
-    const userId = `load_user_${i}`;
+    const userId = `load_b${batch}_u${i}`;
+    // Goal MUST exist before ingest or GOAL_REACHED never fires.
+    await ensureGoal(userId, cycleSteps).catch(() => {});
     eventWorker(userId, cycleSteps).catch(() => {});
     pollingWorker(userId, cycleSteps).catch(() => {});
   }

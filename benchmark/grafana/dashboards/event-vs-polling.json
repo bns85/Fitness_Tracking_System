@@ -11,7 +11,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "ECS351 Architectural Evaluation: Event-Driven Push (SSE) vs Client Polling (5s)",
+      "title": "How to Read This Dashboard (Load Steps + Colour Key)",
       "type": "text",
       "gridPos": {
         "x": 0,
@@ -21,7 +21,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "### Architectural Trade-off Study: Event-Driven vs. Polling\n- **Architectural Difference Tested**: Push (Server-Sent Events backed by in-process EventBus) vs. Pull (Client interval polling every 5 s).\n- **Color Encoding**: <span style=\"color:#3274D9; font-weight:bold;\">Event-Driven (Blue)</span> vs. <span style=\"color:#FF9830; font-weight:bold;\">Polling (Orange)</span> across all panels.\n- **How to Read a Load Step**: Always read steady-state values from the **middle flat section** of each step (e.g. 10, 50, 100, 200, 400 clients), avoiding ramp-up or ramp-down spikes.\n- **Baseline Textboxes**: Enter the lowest-load (10 clients) p95 ingest latency in `$base_event` and `$base_polling` (in ms, default: 5) to calculate degradation %."
+        "content": "### Architectural Trade-off Study: Event-Driven (SSE push) vs Polling (5 s pull)\n- **Colour key (all panels):** <span style=\"color:#3274D9; font-weight:bold;\">Event-Driven = blue</span> \u00b7 <span style=\"color:#FF9830; font-weight:bold;\">Polling = orange</span> (fieldConfig overrides match series names containing *event* / *poll*).\n- **How to read a load step:** the loadgen steps through 10 \u2192 50 \u2192 100 \u2192 200 clients. Read the **flat middle** of each step (steady state), never the ramp edges. Align time ranges with `Simulated Clients` before quoting a number.\n- **Baseline textboxes:** set `$base_event` and `$base_polling` (ms) from **each variant's own 10-client ingest p95** on the Ingest Latency panel. The degradation panel draws a **20% threshold** (red) above that baseline.\n- **cAdvisor panel** is Linux-only and stays empty on Docker Desktop \u2014 use process_* metrics instead.\n- **Empty-poll %** must be read as a percent (unit override); cross-check loadgen vs app counters."
       }
     },
     {
@@ -39,9 +39,9 @@
     },
     {
       "id": 3,
-      "title": "Notification Delivery Latency (p50, p95, p99)",
+      "title": "Notification Delivery Latency (p50, p95, p99) \u2014 log scale",
       "type": "timeseries",
-      "description": "Time from step telemetry ingestion until client receives notification (p50, p95, p99)",
+      "description": "Wall-clock time from ingest POST response until the client receives GOAL_REACHED (SSE push or poll response). Log y-axis so event-driven sub-10ms lines remain visible next to polling's ~poll-interval latency.",
       "gridPos": {
         "x": 0,
         "y": 5,
@@ -121,6 +121,10 @@
             "fillOpacity": 10,
             "showPoints": "never",
             "spanNulls": false
+          },
+          "scale": {
+            "type": "log",
+            "log": 10
           },
           "thresholds": {
             "mode": "absolute",
@@ -547,9 +551,9 @@
     },
     {
       "id": 8,
-      "title": "Throughput (non-5xx req/s)",
+      "title": "Ingest throughput (same offered load by design)",
       "type": "timeseries",
-      "description": "Successful request throughput across all HTTP endpoints (non-5xx)",
+      "description": "Successful step-ingest requests/s only (POST). Offered ingest load is identical for both variants by design \u2014 architecture must not change this curve.",
       "gridPos": {
         "x": 8,
         "y": 14,
@@ -563,8 +567,116 @@
       "targets": [
         {
           "refId": "A",
+          "expr": "sum(rate(http_request_duration_seconds_count{variant=\"event\",method=\"POST\",route=\"/telemetry/steps\",status!~\"5..\"}[30s]))",
+          "legendFormat": "event ingest req/s",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prom"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(http_request_duration_seconds_count{variant=\"polling\",method=\"POST\",route=\"/steps/:userId\",status!~\"5..\"}[30s]))",
+          "legendFormat": "polling ingest req/s",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prom"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*(?i)event.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#3274D9",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*(?i)poll.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FF9830",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "id": 23,
+      "title": "Total HTTP requests/s per variant (includes poll requests)",
+      "type": "timeseries",
+      "description": "All non-5xx HTTP requests. Polling's orange line includes the background poll traffic that event-driven does not pay for on the data plane (SSE is measured separately).",
+      "gridPos": {
+        "x": 16,
+        "y": 14,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prom"
+      },
+      "targets": [
+        {
+          "refId": "A",
           "expr": "sum(rate(http_request_duration_seconds_count{variant=\"event\",status!~\"5..\"}[30s]))",
-          "legendFormat": "event non-5xx req/s",
+          "legendFormat": "event total req/s",
           "datasource": {
             "type": "prometheus",
             "uid": "prom"
@@ -573,7 +685,16 @@
         {
           "refId": "B",
           "expr": "sum(rate(http_request_duration_seconds_count{variant=\"polling\",status!~\"5..\"}[30s]))",
-          "legendFormat": "polling non-5xx req/s",
+          "legendFormat": "polling total req/s",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prom"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "sum(rate(http_request_duration_seconds_count{variant=\"polling\",route=\"/notifications/:userId/poll\",status!~\"5..\"}[30s]))",
+          "legendFormat": "polling of which poll req/s",
           "datasource": {
             "type": "prometheus",
             "uid": "prom"
@@ -657,10 +778,10 @@
       "id": 9,
       "title": "Error Rate % (5xx Share)",
       "type": "timeseries",
-      "description": "Percentage of requests returning 5xx status codes",
+      "description": "Percentage of requests returning 5xx. `or vector(0)` keeps the series at 0% when there are no errors (no NaN gap).",
       "gridPos": {
-        "x": 16,
-        "y": 14,
+        "x": 0,
+        "y": 22,
         "w": 8,
         "h": 8
       },
@@ -671,7 +792,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "100 * sum(rate(http_request_duration_seconds_count{variant=\"event\",status=~\"5..\"}[30s])) / sum(rate(http_request_duration_seconds_count{variant=\"event\"}[30s]))",
+          "expr": "100 * sum(rate(http_request_duration_seconds_count{variant=\"event\",status=~\"5..\"}[30s])) / sum(rate(http_request_duration_seconds_count{variant=\"event\"}[30s])) or vector(0)",
           "legendFormat": "event error %",
           "datasource": {
             "type": "prometheus",
@@ -680,7 +801,7 @@
         },
         {
           "refId": "B",
-          "expr": "100 * sum(rate(http_request_duration_seconds_count{variant=\"polling\",status=~\"5..\"}[30s])) / sum(rate(http_request_duration_seconds_count{variant=\"polling\"}[30s]))",
+          "expr": "100 * sum(rate(http_request_duration_seconds_count{variant=\"polling\",status=~\"5..\"}[30s])) / sum(rate(http_request_duration_seconds_count{variant=\"polling\"}[30s])) or vector(0)",
           "legendFormat": "polling error %",
           "datasource": {
             "type": "prometheus",
@@ -769,11 +890,11 @@
       "id": 10,
       "title": "Latency Degradation % of Ingest p95 vs Baseline",
       "type": "timeseries",
-      "description": "Relative latency growth compared to minimal load baseline ($base_event, $base_polling in ms)",
+      "description": "Relative ingest-p95 growth vs each variant's own 10-client baseline. Set $base_event and $base_polling (ms) from that variant's measured 10-client p95 ingest \u2014 never share one baseline across variants. Red threshold line = +20%.",
       "gridPos": {
-        "x": 0,
+        "x": 8,
         "y": 22,
-        "w": 12,
+        "w": 8,
         "h": 8
       },
       "datasource": {
@@ -794,6 +915,15 @@
           "refId": "B",
           "expr": "100 * ((histogram_quantile(0.95, sum by(le) (rate(http_request_duration_seconds_bucket{variant=\"polling\",method=\"POST\",route=\"/steps/:userId\"}[30s])))) - ($base_polling / 1000)) / ($base_polling / 1000)",
           "legendFormat": "polling p95 degradation %",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prom"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "vector(20)",
+          "legendFormat": "20% threshold",
           "datasource": {
             "type": "prometheus",
             "uid": "prom"
@@ -883,9 +1013,9 @@
       "type": "timeseries",
       "description": "Node.js event loop lag (p99) exposing SSE listener fan-out and main thread blocking",
       "gridPos": {
-        "x": 12,
+        "x": 16,
         "y": 22,
-        "w": 12,
+        "w": 8,
         "h": 8
       },
       "datasource": {
@@ -1216,9 +1346,9 @@
     },
     {
       "id": 15,
-      "title": "Throughput per CPU Core (req/s / core)",
+      "title": "Throughput per CPU Core \u2014 per INGEST request (ingest req/s / core)",
       "type": "timeseries",
-      "description": "Request throughput delivered per single CPU core consumed",
+      "description": "Step-ingest throughput delivered per single CPU core. Counted on POST ingest routes only, not poll/health traffic.",
       "gridPos": {
         "x": 16,
         "y": 31,
@@ -1232,8 +1362,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by(variant)(rate(http_request_duration_seconds_count{variant=\"event\"}[30s])) / sum by(variant)(rate(process_cpu_seconds_total{job=\"event-app\"}[30s]))",
-          "legendFormat": "event throughput/core",
+          "expr": "sum(rate(http_request_duration_seconds_count{variant=\"event\",method=\"POST\",route=\"/telemetry/steps\"}[30s])) / sum by(variant)(rate(process_cpu_seconds_total{job=\"event-app\"}[30s]))",
+          "legendFormat": "event ingest req/s per core",
           "datasource": {
             "type": "prometheus",
             "uid": "prom"
@@ -1241,8 +1371,8 @@
         },
         {
           "refId": "B",
-          "expr": "sum by(variant)(rate(http_request_duration_seconds_count{variant=\"polling\"}[30s])) / sum by(variant)(rate(process_cpu_seconds_total{job=\"polling-app\"}[30s]))",
-          "legendFormat": "polling throughput/core",
+          "expr": "sum(rate(http_request_duration_seconds_count{variant=\"polling\",method=\"POST\",route=\"/steps/:userId\"}[30s])) / sum by(variant)(rate(process_cpu_seconds_total{job=\"polling-app\"}[30s]))",
+          "legendFormat": "polling ingest req/s per core",
           "datasource": {
             "type": "prometheus",
             "uid": "prom"
@@ -1324,9 +1454,9 @@
     },
     {
       "id": 16,
-      "title": "CPU-ms per Request",
+      "title": "CPU-ms per INGEST request (not per poll)",
       "type": "timeseries",
-      "description": "Average CPU execution time expended per HTTP transaction",
+      "description": "Process CPU time per successful step-ingest POST. Poll and health endpoints are excluded from the denominator.",
       "gridPos": {
         "x": 0,
         "y": 39,
@@ -1340,8 +1470,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "1000 * sum by(variant)(rate(process_cpu_seconds_total{job=\"event-app\"}[30s])) / sum by(variant)(rate(http_request_duration_seconds_count{variant=\"event\"}[30s]))",
-          "legendFormat": "event CPU-ms/req",
+          "expr": "1000 * sum by(variant)(rate(process_cpu_seconds_total{job=\"event-app\"}[30s])) / sum(rate(http_request_duration_seconds_count{variant=\"event\",method=\"POST\",route=\"/telemetry/steps\"}[30s]))",
+          "legendFormat": "event CPU-ms per ingest",
           "datasource": {
             "type": "prometheus",
             "uid": "prom"
@@ -1349,8 +1479,8 @@
         },
         {
           "refId": "B",
-          "expr": "1000 * sum by(variant)(rate(process_cpu_seconds_total{job=\"polling-app\"}[30s])) / sum by(variant)(rate(http_request_duration_seconds_count{variant=\"polling\"}[30s]))",
-          "legendFormat": "polling CPU-ms/req",
+          "expr": "1000 * sum by(variant)(rate(process_cpu_seconds_total{job=\"polling-app\"}[30s])) / sum(rate(http_request_duration_seconds_count{variant=\"polling\",method=\"POST\",route=\"/steps/:userId\"}[30s]))",
+          "legendFormat": "polling CPU-ms per ingest",
           "datasource": {
             "type": "prometheus",
             "uid": "prom"
@@ -1574,7 +1704,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by(variant)(rate(db_operations_total{variant=\"event\"}[1m])) / on(variant) sum by(variant)(rate(notify_delivered_total{variant=\"event\"}[1m]))",
+          "expr": "sum(rate(db_operations_total{variant=\"event\"}[1m])) / sum(rate(notify_delivered_total{variant=\"event\"}[1m]))",
           "legendFormat": "event DB ops/notification",
           "datasource": {
             "type": "prometheus",
@@ -1583,7 +1713,7 @@
         },
         {
           "refId": "B",
-          "expr": "sum by(variant)(rate(db_operations_total{variant=\"polling\"}[1m])) / on(variant) sum by(variant)(rate(notify_delivered_total{variant=\"polling\"}[1m]))",
+          "expr": "sum(rate(db_operations_total{variant=\"polling\"}[1m])) / sum(rate(notify_delivered_total{variant=\"polling\"}[1m]))",
           "legendFormat": "polling DB ops/notification",
           "datasource": {
             "type": "prometheus",
@@ -1666,9 +1796,9 @@
     },
     {
       "id": 19,
-      "title": "cAdvisor CPU and Memory (Linux only)",
+      "title": "cAdvisor CPU and Memory (Linux only \u2014 empty on Docker Desktop)",
       "type": "timeseries",
-      "description": "Container resource metrics recorded by cAdvisor (available on Linux / cgroups)",
+      "description": "Linux cgroups metrics via cAdvisor. Not available on Docker Desktop / WSL without cAdvisor \u2014 expect no data here; use process_cpu_seconds_total and process_resident_memory_bytes instead.",
       "gridPos": {
         "x": 0,
         "y": 47,
@@ -1805,9 +1935,9 @@
     },
     {
       "id": 21,
-      "title": "Polling Mechanism: Poll Requests & Empty-Poll %",
+      "title": "Empty-poll share (%) \u2014 loadgen vs app cross-check",
       "type": "timeseries",
-      "description": "Polling request intensity and proportion of wasteful empty polls (has_new=false)",
+      "description": "Percent of polls that found no new notification. Two independent counters must agree: loadgen poll_empty_total/poll_requests_total and app poll_responses_total{has_new=\"false\"}/poll_responses_total. Historical bug: loadgen read `has_new` while the API returns `hasNew` (always false) and stopped polling on first hit \u2014 both fixed. Expected range with 5s poll: roughly 33\u201367% empty, not ~84%.",
       "gridPos": {
         "x": 0,
         "y": 56,
@@ -1821,8 +1951,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_request_duration_seconds_count{variant=\"polling\",route=\"/notifications/:userId/poll\"}[30s]))",
-          "legendFormat": "polling app poll req/s",
+          "expr": "100 * sum(rate(poll_empty_total{variant=\"polling\"}[1m])) / sum(rate(poll_requests_total{variant=\"polling\"}[1m])) or vector(0)",
+          "legendFormat": "loadgen empty-poll %",
           "datasource": {
             "type": "prometheus",
             "uid": "prom"
@@ -1830,26 +1960,8 @@
         },
         {
           "refId": "B",
-          "expr": "100 * sum(rate(poll_responses_total{variant=\"polling\",has_new=\"false\"}[30s])) / sum(rate(poll_responses_total{variant=\"polling\"}[30s]))",
-          "legendFormat": "polling app empty-poll %",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prom"
-          }
-        },
-        {
-          "refId": "C",
-          "expr": "sum(rate(poll_requests_total{variant=\"polling\"}[1m]))",
-          "legendFormat": "loadgen poll req/s",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prom"
-          }
-        },
-        {
-          "refId": "D",
-          "expr": "100 * sum(rate(poll_empty_total{variant=\"polling\"}[1m])) / sum(rate(poll_requests_total{variant=\"polling\"}[1m]))",
-          "legendFormat": "loadgen empty-poll %",
+          "expr": "100 * sum(rate(poll_responses_total{variant=\"polling\",has_new=\"false\"}[30s])) / sum(rate(poll_responses_total{variant=\"polling\"}[30s])) or vector(0)",
+          "legendFormat": "app empty-poll %",
           "datasource": {
             "type": "prometheus",
             "uid": "prom"
@@ -1858,7 +1970,124 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*(?i)event.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#3274D9",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*(?i)poll.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FF9830",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "id": 24,
+      "title": "Poll request intensity (req/s) & delivery rate",
+      "type": "timeseries",
+      "description": "Raw poll request rates (app + loadgen) and successful notification deliveries/s for context next to empty-poll %.",
+      "gridPos": {
+        "x": 12,
+        "y": 56,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prom"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(http_request_duration_seconds_count{variant=\"polling\",route=\"/notifications/:userId/poll\"}[30s]))",
+          "legendFormat": "app poll req/s",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prom"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(poll_requests_total{variant=\"polling\"}[1m]))",
+          "legendFormat": "loadgen poll req/s",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prom"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "sum(rate(notify_delivered_total{variant=\"polling\"}[1m]))",
+          "legendFormat": "polling deliveries/s",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prom"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
           "color": {
             "mode": "palette-classic"
           },
@@ -1935,9 +2164,9 @@
       "type": "timeseries",
       "description": "EventBus publishing throughput and active open Server-Sent Event listener count",
       "gridPos": {
-        "x": 12,
-        "y": 56,
-        "w": 12,
+        "x": 0,
+        "y": 64,
+        "w": 24,
         "h": 8
       },
       "datasource": {
@@ -2054,7 +2283,7 @@
           "text": "5",
           "value": "5"
         },
-        "description": "Baseline ingest p95 latency (ms) for Event-Driven variant at minimal load",
+        "description": "Baseline ingest p95 latency (ms) for Event-Driven at minimal load. Set from each variant's own 10-client p95 ingest value (Ingest Latency panel \u2192 event ingest p95 at 10 users). Do not guess.",
         "hide": 0,
         "label": "Baseline Event p95 (ms)",
         "name": "base_event",
@@ -2075,7 +2304,7 @@
           "text": "5",
           "value": "5"
         },
-        "description": "Baseline ingest p95 latency (ms) for Polling variant at minimal load",
+        "description": "Baseline ingest p95 latency (ms) for Polling at minimal load. Set from each variant's own 10-client p95 ingest value (Ingest Latency panel \u2192 polling ingest p95 at 10 users). Do not guess.",
         "hide": 0,
         "label": "Baseline Polling p95 (ms)",
         "name": "base_polling",
