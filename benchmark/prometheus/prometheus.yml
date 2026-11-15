@@ -27,6 +27,12 @@ scrape_configs:
         labels:
           variant: "polling"
 
+  # CSV results exporter: publishes the numbers from benchmark/results/*-levels.csv
+  # so Grafana can show exactly the same values as the CSV files and the report.
+  - job_name: "csv-results"
+    static_configs:
+      - targets: ["host.docker.internal:9101"]
+
   - job_name: "cadvisor"
     static_configs:
       - targets: ["cadvisor:8080"]

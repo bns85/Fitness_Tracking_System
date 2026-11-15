@@ -66,6 +66,11 @@ docker compose up -d --build
 docker logs event-app 2>&1 | grep MongoDB
 docker logs polling-app 2>&1 | grep MongoDB
 
-# 3. Access Grafana
+# 3. CSV results exporter (single source of truth for the "Exact results" dashboard row).
+#    Re-reads benchmark/results/*-levels.csv on every scrape and publishes them
+#    to Prometheus as csv_result on port 9101. Keep it running next to the stack:
+node benchmark/analysis/csv_exporter.js
+
+# 4. Access Grafana
 # Open http://localhost:3000 in your browser
 ```

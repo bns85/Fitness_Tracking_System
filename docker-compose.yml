@@ -136,6 +136,8 @@ services:
     ports:
       - "9090:9090"
     extra_hosts:
+      # Linux needs this alias; Docker Desktop provides host.docker.internal itself.
+      - "host.docker.internal:host-gateway"
       - "loadgen:host-gateway"
       - "loadgen-event:host-gateway"
       - "loadgen-polling:host-gateway"
