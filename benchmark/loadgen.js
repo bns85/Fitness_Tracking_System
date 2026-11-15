@@ -19,7 +19,10 @@
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
-const client = require("../Event_Driven/Event_Backend/node_modules/prom-client");
+let client;
+try { client = require("../Event_Driven/Event_Backend/node_modules/prom-client"); }
+catch (_) { client = require("prom-client"); }
+const LOADGEN_VERSION = "v2-openloop";
 
 // ------------------------------------------------------------------ //
 // Config
@@ -40,6 +43,14 @@ const EXP       = process.env.EXP || "e1";
 const WORKER_CAP = parseInt(process.env.WORKER_CAP || "250", 10);
 const OUT_DIR   = process.env.OUT_DIR || path.join(__dirname, "results");
 const CYCLE_STEPS = 500;
+// v2: both variants use the SAME fixed-length cycle (open loop), so the offered load is equal.
+const THINK_MIN_S = parseFloat(process.env.THINK_MIN_S || "1");
+const THINK_MAX_S = parseFloat(process.env.THINK_MAX_S || "6");
+const CYCLE_MS = Math.max(
+  parseFloat(process.env.CYCLE_S || "15") * 1000,
+  THINK_MAX_S * 1000 + TIMEOUT_MS + 1000
+);
+const rand = (a, b) => a + Math.random() * (b - a);
 
 // ------------------------------------------------------------------ //
 // Prometheus metrics (Grafana / Prometheus — cumulative across stages)
@@ -227,167 +238,202 @@ async function ensureGoal(base, userId, target) {
 }
 
 // ------------------------------------------------------------------ //
-// One event cycle: open SSE, ingest, hold listener until TIMEOUT_MS
+// Helpers for fixed-length cycles
 // ------------------------------------------------------------------ //
-async function eventCycle(userId, gen) {
-  return new Promise((resolve) => {
-    if (gen !== stageGeneration) { resolve(); return; }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    const sseUrl = new URL(`${EVENT_URL}/api/notifications/${userId}/stream`);
-    let notified = false;
-    let startMs  = null;
-    let sseReq   = null;
-    let buffer   = "";
-    let settled  = false;
-
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      try { if (sseReq) sseReq.destroy(); } catch (_) {}
-      resolve();
-    };
-
-    sseReq = http.get(
-      {
-        hostname: sseUrl.hostname, port: sseUrl.port, path: sseUrl.pathname,
-        headers: { Accept: "text/event-stream" },
-      },
-      (res) => {
-        res.on("data", (chunk) => {
-          buffer += chunk.toString();
-          const lines = buffer.split("\n");
-          buffer = lines.pop();
-          for (const line of lines) {
-            if (line.startsWith("data:") && startMs !== null && !notified) {
-              try {
-                const payload = JSON.parse(line.slice(5).trim());
-                if (payload && payload.type === "GOAL_REACHED") {
-                  notified = true;
-                  const latency = (Date.now() - startMs) / 1000;
-                  notifyDeliverySeconds.observe({ variant: "event" }, latency);
-                  notifyDeliveredTotal.inc({ variant: "event" });
-                  if (recording && gen === stageGeneration) {
-                    stage.event.delivery.push(latency);
-                    stage.event.delivered += 1;
-                  }
-                }
-              } catch (_) {}
-            }
-          }
-        });
-        res.on("error", () => {});
-      }
-    );
-    sseReq.on("error", () => {});
-
-    setTimeout(async () => {
-      try {
-        startMs = Date.now();
-        const t0 = Date.now();
-        await httpPost(`${EVENT_URL}/api/telemetry/steps`, {
-          userId, steps: CYCLE_STEPS, calories: 15, distance: 0.18,
-        });
-        const ingestLat = (Date.now() - t0) / 1000;
-        ingestSeconds.observe({ variant: "event" }, ingestLat);
-        if (recording && gen === stageGeneration) stage.event.ingest.push(ingestLat);
-      } catch (e) {
-        loadgenErrorsTotal.inc({ variant: "event" });
-        if (recording && gen === stageGeneration) stage.event.errors += 1;
-      }
-
-      setTimeout(() => {
-        if (!notified) {
-          notifyTimeoutsTotal.inc({ variant: "event" });
-          if (recording && gen === stageGeneration) stage.event.timeouts += 1;
-        }
-        finish();
-      }, TIMEOUT_MS);
-    }, 100);
-  });
+async function sleepUntil(endMs, gen) {
+  while (Date.now() < endMs && gen === stageGeneration) {
+    await sleep(Math.min(250, Math.max(1, endMs - Date.now())));
+  }
 }
 
 // ------------------------------------------------------------------ //
-// One polling cycle: ingest then poll until TIMEOUT_MS
+// One event cycle: open SSE, think, ingest, wait for the push, hold the
+// connection until the END of the cycle (like a real client).
+// Delivery latency = time from just before the ingest POST to the push arriving.
 // ------------------------------------------------------------------ //
-async function pollingCycle(userId, gen) {
-  if (gen !== stageGeneration) return;
-
-  let startMs = null;
+async function eventCycle(userId, gen, cycleEnd) {
+  const sseUrl = new URL(`${EVENT_URL}/api/notifications/${userId}/stream`);
   let notified = false;
+  let t0 = null;
+  let inWindow = false;
+  let buffer = "";
+
+  const sseReq = http.get(
+    {
+      hostname: sseUrl.hostname, port: sseUrl.port, path: sseUrl.pathname,
+      headers: { Accept: "text/event-stream" },
+    },
+    (res) => {
+      res.on("data", (chunk) => {
+        buffer += chunk.toString();
+        const lines = buffer.split("\n");
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (line.startsWith("data:") && t0 !== null && !notified) {
+            try {
+              const payload = JSON.parse(line.slice(5).trim());
+              if (payload && payload.type === "GOAL_REACHED") {
+                notified = true;
+                const latency = (Date.now() - t0) / 1000;
+                notifyDeliverySeconds.observe({ variant: "event" }, latency);
+                notifyDeliveredTotal.inc({ variant: "event" });
+                if (inWindow) {
+                  stage.event.delivery.push(latency);
+                  stage.event.delivered += 1;
+                }
+              }
+            } catch (_) {}
+          }
+        }
+      });
+      res.on("error", () => {});
+    }
+  );
+  sseReq.on("error", () => {});
 
   try {
-    startMs = Date.now();
-    const t0 = Date.now();
-    await httpPost(`${POLLING_URL}/api/steps/${userId}`, {
-      userId, steps: CYCLE_STEPS, calories: 15, distance: 0.18,
-    });
-    const ingestLat = (Date.now() - t0) / 1000;
-    ingestSeconds.observe({ variant: "polling" }, ingestLat);
-    if (recording && gen === stageGeneration) stage.polling.ingest.push(ingestLat);
-  } catch (e) {
-    loadgenErrorsTotal.inc({ variant: "polling" });
-    if (recording && gen === stageGeneration) stage.polling.errors += 1;
-    return;
-  }
-
-  const deadline = startMs + TIMEOUT_MS;
-  while (Date.now() < deadline && gen === stageGeneration) {
-    await new Promise((r) => setTimeout(r, POLL_MS));
-    if (Date.now() >= deadline || gen !== stageGeneration) break;
+    await sleep(rand(THINK_MIN_S, THINK_MAX_S) * 1000);
+    if (gen !== stageGeneration) return;
+    inWindow = recording && gen === stageGeneration;
+    t0 = Date.now();
     try {
+      await httpPost(`${EVENT_URL}/api/telemetry/steps`, {
+        userId, steps: CYCLE_STEPS, calories: 15, distance: 0.18,
+      });
+      const ingestLat = (Date.now() - t0) / 1000;
+      ingestSeconds.observe({ variant: "event" }, ingestLat);
+      if (inWindow) stage.event.ingest.push(ingestLat);
+    } catch (e) {
+      loadgenErrorsTotal.inc({ variant: "event" });
+      if (inWindow) stage.event.errors += 1;
+    }
+    const deadline = t0 + TIMEOUT_MS;
+    while (!notified && Date.now() < deadline && gen === stageGeneration) await sleep(20);
+    if (!notified && gen === stageGeneration) {
+      notifyTimeoutsTotal.inc({ variant: "event" });
+      if (inWindow) stage.event.timeouts += 1;
+    }
+    await sleepUntil(cycleEnd, gen);
+  } finally {
+    try { sseReq.destroy(); } catch (_) {}
+  }
+}
+
+// ------------------------------------------------------------------ //
+// One polling cycle: the client polls on ITS OWN clock (fixed cadence, random
+// phase) for the whole cycle; the ingest happens at a random moment inside it.
+// Delivery latency = time from just before the ingest POST to the poll response
+// that first shows the notification. Polls that bring nothing new (before the
+// ingest, or after the client already has the notification) count as empty.
+// ------------------------------------------------------------------ //
+async function pollingCycle(userId, gen, cycleEnd) {
+  let t0 = null;
+  let notified = false;
+  let inWindow = false;
+  let stopped = false;
+
+  const napWhile = async (ms) => {
+    const end = Date.now() + ms;
+    while (!stopped && Date.now() < end) await sleep(Math.min(100, Math.max(1, end - Date.now())));
+  };
+  (async () => {
+    await napWhile(Math.random() * POLL_MS); // random phase
+    let next = Date.now();
+    while (!stopped && Date.now() < cycleEnd && gen === stageGeneration) {
+      const rec = recording && gen === stageGeneration;
       pollRequestsTotal.inc({ variant: "polling" });
-      if (recording && gen === stageGeneration) stage.pollReq += 1;
-      const res = await httpGet(`${POLLING_URL}/api/notifications/${userId}/poll`);
-      let parsed;
-      try { parsed = JSON.parse(res.body); } catch (_) { parsed = {}; }
-      const hasNew = parsed.hasNew === true || parsed.has_new === true;
-      if (hasNew) {
-        if (!notified) {
+      if (rec) stage.pollReq += 1;
+      try {
+        const res = await httpGet(`${POLLING_URL}/api/notifications/${userId}/poll`);
+        let parsed;
+        try { parsed = JSON.parse(res.body); } catch (_) { parsed = {}; }
+        const hasNew = parsed.hasNew === true || parsed.has_new === true;
+        const now = Date.now();
+        if (hasNew && !notified && t0 !== null) {
           notified = true;
-          const latency = (Date.now() - startMs) / 1000;
+          const latency = (now - t0) / 1000;
           notifyDeliverySeconds.observe({ variant: "polling" }, latency);
           notifyDeliveredTotal.inc({ variant: "polling" });
-          if (recording && gen === stageGeneration) {
+          if (inWindow) {
             stage.polling.delivery.push(latency);
             stage.polling.delivered += 1;
           }
+        } else {
+          pollEmptyTotal.inc({ variant: "polling" });
+          if (rec) stage.pollEmpty += 1;
         }
-      } else {
-        pollEmptyTotal.inc({ variant: "polling" });
-        if (recording && gen === stageGeneration) stage.pollEmpty += 1;
+      } catch (e) {
+        loadgenErrorsTotal.inc({ variant: "polling" });
+        if (inWindow) stage.polling.errors += 1;
       }
+      next += POLL_MS;
+      const wait = next - Date.now();
+      if (wait > 0) await napWhile(wait); else next = Date.now();
+    }
+  })();
+
+  try {
+    await sleep(rand(THINK_MIN_S, THINK_MAX_S) * 1000);
+    if (gen !== stageGeneration) return;
+    inWindow = recording && gen === stageGeneration;
+    t0 = Date.now();
+    try {
+      await httpPost(`${POLLING_URL}/api/steps/${userId}`, {
+        userId, steps: CYCLE_STEPS, calories: 15, distance: 0.18,
+      });
+      const ingestLat = (Date.now() - t0) / 1000;
+      ingestSeconds.observe({ variant: "polling" }, ingestLat);
+      if (inWindow) stage.polling.ingest.push(ingestLat);
     } catch (e) {
       loadgenErrorsTotal.inc({ variant: "polling" });
-      if (recording && gen === stageGeneration) stage.polling.errors += 1;
+      if (inWindow) stage.polling.errors += 1;
     }
-  }
-
-  if (!notified) {
-    notifyTimeoutsTotal.inc({ variant: "polling" });
-    if (recording && gen === stageGeneration) stage.polling.timeouts += 1;
+    const deadline = t0 + TIMEOUT_MS;
+    while (!notified && Date.now() < deadline && gen === stageGeneration) await sleep(50);
+    if (!notified && gen === stageGeneration) {
+      notifyTimeoutsTotal.inc({ variant: "polling" });
+      if (inWindow) stage.polling.timeouts += 1;
+    }
+    await sleepUntil(cycleEnd, gen);
+  } finally {
+    stopped = true; // the poll loop exits on its own within ~100 ms; do not wait for it
   }
 }
 
 // ------------------------------------------------------------------ //
-// Long-lived worker loops — one per (variant, slot), live for one stage
+// Long-lived worker loops: one per (variant, slot), fixed-length cycles
 // ------------------------------------------------------------------ //
 async function eventWorkerLoop(slot, gen) {
+  await sleep(Math.random() * CYCLE_MS); // de-synchronise workers
   let i = 0;
+  let cycleStart = Date.now();
   while (gen === stageGeneration) {
+    if (Date.now() > cycleStart + CYCLE_MS) cycleStart = Date.now(); // fell behind: resync
+    const cycleEnd = cycleStart + CYCLE_MS;
+    cycleStart = cycleEnd;
     const userId = `load_${EXP}_${RUN_LABEL}_s${currentUsers}_w${slot}_c${i++}_${cycleSeq++}`;
     await ensureGoal(EVENT_URL, userId, CYCLE_STEPS);
     if (gen !== stageGeneration) break;
-    await eventCycle(userId, gen);
+    await eventCycle(userId, gen, cycleEnd);
+    await sleepUntil(cycleEnd, gen);
   }
 }
 
 async function pollingWorkerLoop(slot, gen) {
+  await sleep(Math.random() * CYCLE_MS); // de-synchronise workers
   let i = 0;
+  let cycleStart = Date.now();
   while (gen === stageGeneration) {
+    if (Date.now() > cycleStart + CYCLE_MS) cycleStart = Date.now(); // fell behind: resync
+    const cycleEnd = cycleStart + CYCLE_MS;
+    cycleStart = cycleEnd;
     const userId = `load_${EXP}_${RUN_LABEL}_s${currentUsers}_w${slot}_c${i++}_${cycleSeq++}`;
     await ensureGoal(POLLING_URL, userId, CYCLE_STEPS);
     if (gen !== stageGeneration) break;
-    await pollingCycle(userId, gen);
+    await pollingCycle(userId, gen, cycleEnd);
+    await sleepUntil(cycleEnd, gen);
   }
 }
 
@@ -415,6 +461,8 @@ const CSV_HEADER = [
   "ingest_p50_s","ingest_p95_s","ingest_p99_s","ingest_mean_s","ingest_n","ingest_errors",
   "notify_delivered","poll_requests","poll_empty","poll_empty_share",
   "app_cpu_delta_s","app_rss_bytes","eventloop_lag_p99_s","workers",
+  "delivery_min_s","delivery_max_s","ingest_per_s","notifications_per_s","poll_requests_per_s",
+  "cycle_s","think_min_s","think_max_s","timeout_ms","loadgen_version",
 ].join(",");
 
 function csvPath() {
@@ -457,6 +505,10 @@ function appendCsvRows(users) {
       pollEmptyShare != null ? round(pollEmptyShare, 4) : "",
       round(cpuDelta, 4), rss != null ? String(Math.round(rss)) : "", round(lag, 6),
       workers,
+      round(d.length ? Math.min(...d) : null), round(d.length ? Math.max(...d) : null),
+      round(ing.length / HOLD_S, 4), round(v.delivered / HOLD_S, 4),
+      variant === "polling" ? round(stage.pollReq / HOLD_S, 4) : "",
+      CYCLE_MS / 1000, THINK_MIN_S, THINK_MAX_S, TIMEOUT_MS, LOADGEN_VERSION,
     ].join(",");
     rows.push(row);
   }
@@ -471,7 +523,31 @@ function appendCsvRows(users) {
 // ------------------------------------------------------------------ //
 // Stage runner
 // ------------------------------------------------------------------ //
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+function validateStage(users) {
+  const e = stage.event, p = stage.polling;
+  const rel = (a, b) => (b ? Math.abs(a - b) / b : 0);
+  if (e.ingest.length >= 30 && p.ingest.length >= 30 && rel(e.ingest.length, p.ingest.length) > 0.05) {
+    console.log(`[WARN] ${users}u: offered load differs (ingest_n event=${e.ingest.length} polling=${p.ingest.length})`);
+  }
+  if (p.delivery.length >= 100) {
+    const m = mean(p.delivery);
+    if (rel(m, POLL_MS / 2000) > 0.15) {
+      console.log(`[WARN] ${users}u: polling mean ${m.toFixed(2)}s is far from POLL_MS/2=${POLL_MS / 2000}s (check poll phase)`);
+    }
+  }
+  for (const [name, v] of [["event", e], ["polling", p]]) {
+    if (v.delivery.length) {
+      const m = mean(v.delivery);
+      if (m < Math.min(...v.delivery) - 1e-9 || m > Math.max(...v.delivery) + 1e-9) {
+        console.log(`[WARN] ${users}u ${name}: mean outside min/max (data bug)`);
+      }
+    }
+    const total = v.delivered + v.timeouts;
+    if (total > 0 && v.timeouts / total > 0.02) {
+      console.log(`[WARN] ${users}u ${name}: ${(100 * v.timeouts / total).toFixed(1)}% timeouts`);
+    }
+  }
+}
 
 async function runAllStages() {
   console.log("================================================");
@@ -480,6 +556,7 @@ async function runAllStages() {
   console.log(`HOLD_S/WARMUP : ${HOLD_S}/${WARMUP_S}`);
   console.log(`Poll interval : ${POLL_MS} ms  Timeout: ${TIMEOUT_MS} ms`);
   console.log(`Worker cap    : ${WORKER_CAP} per variant`);
+  console.log(`Cycle         : ${CYCLE_MS / 1000}s fixed (think ${THINK_MIN_S}-${THINK_MAX_S}s)  version=${LOADGEN_VERSION}`);
   console.log(`CSV           : ${csvPath()}`);
   console.log("================================================");
 
@@ -510,6 +587,7 @@ async function runAllStages() {
     stage.appEnd = await snapshotApps();
 
     appendCsvRows(users);
+    validateStage(users);
     console.log(
       `[STAGE DONE] ${users}u event_del=${stage.event.delivery.length} ` +
       `poll_del=${stage.polling.delivery.length} poll_req=${stage.pollReq} ` +
