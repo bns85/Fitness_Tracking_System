@@ -52,6 +52,15 @@ const CYCLE_MS = Math.max(
 );
 const rand = (a, b) => a + Math.random() * (b - a);
 
+// Monotonic clock. The wall clock (Date.now) can jump by seconds on Windows/WSL
+// when the system time is corrected. A jump would corrupt latencies, deadlines and
+// the poll schedule, so every timing below uses this steady clock instead.
+const monoMs = () => Number(process.hrtime.bigint() / 1000000n);
+
+// Metrics port. The self-test sets METRICS_PORT=9199 so that it never serves
+// metrics on 9100 (the port Prometheus scrapes for real runs).
+const METRICS_PORT = parseInt(process.env.METRICS_PORT || "9100", 10);
+
 // ------------------------------------------------------------------ //
 // Prometheus metrics (Grafana / Prometheus — cumulative across stages)
 // ------------------------------------------------------------------ //
@@ -243,8 +252,8 @@ async function ensureGoal(base, userId, target) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function sleepUntil(endMs, gen) {
-  while (Date.now() < endMs && gen === stageGeneration) {
-    await sleep(Math.min(250, Math.max(1, endMs - Date.now())));
+  while (monoMs() < endMs && gen === stageGeneration) {
+    await sleep(Math.min(250, Math.max(1, endMs - monoMs())));
   }
 }
 
@@ -276,7 +285,7 @@ async function eventCycle(userId, gen, cycleEnd) {
               const payload = JSON.parse(line.slice(5).trim());
               if (payload && payload.type === "GOAL_REACHED") {
                 notified = true;
-                const latency = (Date.now() - t0) / 1000;
+                const latency = (monoMs() - t0) / 1000;
                 notifyDeliverySeconds.observe({ variant: "event" }, latency);
                 notifyDeliveredTotal.inc({ variant: "event" });
                 if (inWindow) {
@@ -297,12 +306,12 @@ async function eventCycle(userId, gen, cycleEnd) {
     await sleep(rand(THINK_MIN_S, THINK_MAX_S) * 1000);
     if (gen !== stageGeneration) return;
     inWindow = recording && gen === stageGeneration;
-    t0 = Date.now();
+    t0 = monoMs();
     try {
       await httpPost(`${EVENT_URL}/api/telemetry/steps`, {
         userId, steps: CYCLE_STEPS, calories: 15, distance: 0.18,
       });
-      const ingestLat = (Date.now() - t0) / 1000;
+      const ingestLat = (monoMs() - t0) / 1000;
       ingestSeconds.observe({ variant: "event" }, ingestLat);
       if (inWindow) stage.event.ingest.push(ingestLat);
     } catch (e) {
@@ -310,7 +319,7 @@ async function eventCycle(userId, gen, cycleEnd) {
       if (inWindow) stage.event.errors += 1;
     }
     const deadline = t0 + TIMEOUT_MS;
-    while (!notified && Date.now() < deadline && gen === stageGeneration) await sleep(20);
+    while (!notified && monoMs() < deadline && gen === stageGeneration) await sleep(20);
     if (!notified && gen === stageGeneration) {
       notifyTimeoutsTotal.inc({ variant: "event" });
       if (inWindow) stage.event.timeouts += 1;
@@ -335,13 +344,13 @@ async function pollingCycle(userId, gen, cycleEnd) {
   let stopped = false;
 
   const napWhile = async (ms) => {
-    const end = Date.now() + ms;
-    while (!stopped && Date.now() < end) await sleep(Math.min(100, Math.max(1, end - Date.now())));
+    const end = monoMs() + ms;
+    while (!stopped && monoMs() < end) await sleep(Math.min(100, Math.max(1, end - monoMs())));
   };
   (async () => {
     await napWhile(Math.random() * POLL_MS); // random phase
-    let next = Date.now();
-    while (!stopped && Date.now() < cycleEnd && gen === stageGeneration) {
+    let next = monoMs();
+    while (!stopped && monoMs() < cycleEnd && gen === stageGeneration) {
       const rec = recording && gen === stageGeneration;
       pollRequestsTotal.inc({ variant: "polling" });
       if (rec) stage.pollReq += 1;
@@ -350,7 +359,7 @@ async function pollingCycle(userId, gen, cycleEnd) {
         let parsed;
         try { parsed = JSON.parse(res.body); } catch (_) { parsed = {}; }
         const hasNew = parsed.hasNew === true || parsed.has_new === true;
-        const now = Date.now();
+        const now = monoMs();
         if (hasNew && !notified && t0 !== null) {
           notified = true;
           const latency = (now - t0) / 1000;
@@ -369,8 +378,8 @@ async function pollingCycle(userId, gen, cycleEnd) {
         if (inWindow) stage.polling.errors += 1;
       }
       next += POLL_MS;
-      const wait = next - Date.now();
-      if (wait > 0) await napWhile(wait); else next = Date.now();
+      const wait = next - monoMs();
+      if (wait > 0) await napWhile(wait); else next = monoMs();
     }
   })();
 
@@ -378,12 +387,12 @@ async function pollingCycle(userId, gen, cycleEnd) {
     await sleep(rand(THINK_MIN_S, THINK_MAX_S) * 1000);
     if (gen !== stageGeneration) return;
     inWindow = recording && gen === stageGeneration;
-    t0 = Date.now();
+    t0 = monoMs();
     try {
       await httpPost(`${POLLING_URL}/api/steps/${userId}`, {
         userId, steps: CYCLE_STEPS, calories: 15, distance: 0.18,
       });
-      const ingestLat = (Date.now() - t0) / 1000;
+      const ingestLat = (monoMs() - t0) / 1000;
       ingestSeconds.observe({ variant: "polling" }, ingestLat);
       if (inWindow) stage.polling.ingest.push(ingestLat);
     } catch (e) {
@@ -391,7 +400,7 @@ async function pollingCycle(userId, gen, cycleEnd) {
       if (inWindow) stage.polling.errors += 1;
     }
     const deadline = t0 + TIMEOUT_MS;
-    while (!notified && Date.now() < deadline && gen === stageGeneration) await sleep(50);
+    while (!notified && monoMs() < deadline && gen === stageGeneration) await sleep(50);
     if (!notified && gen === stageGeneration) {
       notifyTimeoutsTotal.inc({ variant: "polling" });
       if (inWindow) stage.polling.timeouts += 1;
@@ -408,9 +417,9 @@ async function pollingCycle(userId, gen, cycleEnd) {
 async function eventWorkerLoop(slot, gen) {
   await sleep(Math.random() * CYCLE_MS); // de-synchronise workers
   let i = 0;
-  let cycleStart = Date.now();
+  let cycleStart = monoMs();
   while (gen === stageGeneration) {
-    if (Date.now() > cycleStart + CYCLE_MS) cycleStart = Date.now(); // fell behind: resync
+    if (monoMs() > cycleStart + CYCLE_MS) cycleStart = monoMs(); // fell behind: resync
     const cycleEnd = cycleStart + CYCLE_MS;
     cycleStart = cycleEnd;
     const userId = `load_${EXP}_${RUN_LABEL}_s${currentUsers}_w${slot}_c${i++}_${cycleSeq++}`;
@@ -424,9 +433,9 @@ async function eventWorkerLoop(slot, gen) {
 async function pollingWorkerLoop(slot, gen) {
   await sleep(Math.random() * CYCLE_MS); // de-synchronise workers
   let i = 0;
-  let cycleStart = Date.now();
+  let cycleStart = monoMs();
   while (gen === stageGeneration) {
-    if (Date.now() > cycleStart + CYCLE_MS) cycleStart = Date.now(); // fell behind: resync
+    if (monoMs() > cycleStart + CYCLE_MS) cycleStart = monoMs(); // fell behind: resync
     const cycleEnd = cycleStart + CYCLE_MS;
     cycleStart = cycleEnd;
     const userId = `load_${EXP}_${RUN_LABEL}_s${currentUsers}_w${slot}_c${i++}_${cycleSeq++}`;
@@ -606,7 +615,7 @@ async function runAllStages() {
 }
 
 // ------------------------------------------------------------------ //
-// Metrics server :9100
+// Metrics server (9100 for real runs, 9199 for the self-test)
 // ------------------------------------------------------------------ //
 const server = http.createServer(async (req, res) => {
   if (req.url === "/metrics") {
@@ -618,7 +627,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(9100, "0.0.0.0", () => {
+server.listen(METRICS_PORT, "0.0.0.0", () => {
   runAllStages().catch((err) => {
     console.error("[FATAL]", err);
     process.exit(1);

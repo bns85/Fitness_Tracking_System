@@ -74,3 +74,7 @@ node benchmark/analysis/csv_exporter.js
 # 4. Access Grafana
 # Open http://localhost:3000 in your browser
 ```
+
+**Never run the self-test (`node benchmark/loadgen.selftest.js`) while a real run is going** — it uses fake
+servers and would push wrong numbers into Grafana. The self-test serves its metrics on port 9199, so it no
+longer writes to the real load-generator port 9100, but a real run and a self-test must still never overlap.
