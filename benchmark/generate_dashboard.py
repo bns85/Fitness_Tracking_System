@@ -553,11 +553,11 @@ def build_dashboard():
     # Panel 15: Throughput per core — INGEST only
     p11_targets = [
         {
-            "expr": 'sum(rate(http_request_duration_seconds_count{variant="event",method="POST",route="/telemetry/steps"}[30s])) / sum by(variant)(rate(process_cpu_seconds_total{job="event-app"}[30s]))',
+            "expr": 'sum(rate(http_request_duration_seconds_count{variant="event",method="POST",route="/telemetry/steps"}[30s])) / sum(rate(process_cpu_seconds_total{job="event-app"}[30s]))',
             "legendFormat": "event ingest req/s per core",
         },
         {
-            "expr": 'sum(rate(http_request_duration_seconds_count{variant="polling",method="POST",route="/steps/:userId"}[30s])) / sum by(variant)(rate(process_cpu_seconds_total{job="polling-app"}[30s]))',
+            "expr": 'sum(rate(http_request_duration_seconds_count{variant="polling",method="POST",route="/steps/:userId"}[30s])) / sum(rate(process_cpu_seconds_total{job="polling-app"}[30s]))',
             "legendFormat": "polling ingest req/s per core",
         },
     ]
@@ -579,11 +579,11 @@ def build_dashboard():
     # Panel 16: CPU-ms per INGEST request
     p12_targets = [
         {
-            "expr": '1000 * sum by(variant)(rate(process_cpu_seconds_total{job="event-app"}[30s])) / sum(rate(http_request_duration_seconds_count{variant="event",method="POST",route="/telemetry/steps"}[30s]))',
+            "expr": '1000 * sum(rate(process_cpu_seconds_total{job="event-app"}[30s])) / sum(rate(http_request_duration_seconds_count{variant="event",method="POST",route="/telemetry/steps"}[30s]))',
             "legendFormat": "event CPU-ms per ingest",
         },
         {
-            "expr": '1000 * sum by(variant)(rate(process_cpu_seconds_total{job="polling-app"}[30s])) / sum(rate(http_request_duration_seconds_count{variant="polling",method="POST",route="/steps/:userId"}[30s]))',
+            "expr": '1000 * sum(rate(process_cpu_seconds_total{job="polling-app"}[30s])) / sum(rate(http_request_duration_seconds_count{variant="polling",method="POST",route="/steps/:userId"}[30s]))',
             "legendFormat": "polling CPU-ms per ingest",
         },
     ]
@@ -660,7 +660,7 @@ def build_dashboard():
     dashboard["panels"].append(
         create_panel(
             19,
-            "cAdvisor CPU and Memory (Linux only — empty on Docker Desktop)",
+            "cAdvisor (Linux only, empty on Docker Desktop)",
             "timeseries",
             0,
             47,
@@ -681,11 +681,11 @@ def build_dashboard():
     # Panel 21: Empty-poll % — unit percent (rates moved to companion panel)
     p16_targets = [
         {
-            "expr": '100 * sum(rate(poll_empty_total{variant="polling"}[1m])) / sum(rate(poll_requests_total{variant="polling"}[1m])) or vector(0)',
+            "expr": '100 * sum(rate(poll_empty_total{variant="polling"}[1m])) / sum(rate(poll_requests_total{variant="polling"}[1m]))',
             "legendFormat": "loadgen empty-poll %",
         },
         {
-            "expr": '100 * sum(rate(poll_responses_total{variant="polling",has_new="false"}[30s])) / sum(rate(poll_responses_total{variant="polling"}[30s])) or vector(0)',
+            "expr": '100 * sum(rate(poll_responses_total{variant="polling",has_new="false"}[30s])) / sum(rate(poll_responses_total{variant="polling"}[30s]))',
             "legendFormat": "app empty-poll %",
         },
     ]

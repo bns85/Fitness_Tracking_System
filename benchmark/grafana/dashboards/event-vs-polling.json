@@ -1362,7 +1362,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_request_duration_seconds_count{variant=\"event\",method=\"POST\",route=\"/telemetry/steps\"}[30s])) / sum by(variant)(rate(process_cpu_seconds_total{job=\"event-app\"}[30s]))",
+          "expr": "sum(rate(http_request_duration_seconds_count{variant=\"event\",method=\"POST\",route=\"/telemetry/steps\"}[30s])) / sum(rate(process_cpu_seconds_total{job=\"event-app\"}[30s]))",
           "legendFormat": "event ingest req/s per core",
           "datasource": {
             "type": "prometheus",
@@ -1371,7 +1371,7 @@
         },
         {
           "refId": "B",
-          "expr": "sum(rate(http_request_duration_seconds_count{variant=\"polling\",method=\"POST\",route=\"/steps/:userId\"}[30s])) / sum by(variant)(rate(process_cpu_seconds_total{job=\"polling-app\"}[30s]))",
+          "expr": "sum(rate(http_request_duration_seconds_count{variant=\"polling\",method=\"POST\",route=\"/steps/:userId\"}[30s])) / sum(rate(process_cpu_seconds_total{job=\"polling-app\"}[30s]))",
           "legendFormat": "polling ingest req/s per core",
           "datasource": {
             "type": "prometheus",
@@ -1470,7 +1470,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "1000 * sum by(variant)(rate(process_cpu_seconds_total{job=\"event-app\"}[30s])) / sum(rate(http_request_duration_seconds_count{variant=\"event\",method=\"POST\",route=\"/telemetry/steps\"}[30s]))",
+          "expr": "1000 * sum(rate(process_cpu_seconds_total{job=\"event-app\"}[30s])) / sum(rate(http_request_duration_seconds_count{variant=\"event\",method=\"POST\",route=\"/telemetry/steps\"}[30s]))",
           "legendFormat": "event CPU-ms per ingest",
           "datasource": {
             "type": "prometheus",
@@ -1479,7 +1479,7 @@
         },
         {
           "refId": "B",
-          "expr": "1000 * sum by(variant)(rate(process_cpu_seconds_total{job=\"polling-app\"}[30s])) / sum(rate(http_request_duration_seconds_count{variant=\"polling\",method=\"POST\",route=\"/steps/:userId\"}[30s]))",
+          "expr": "1000 * sum(rate(process_cpu_seconds_total{job=\"polling-app\"}[30s])) / sum(rate(http_request_duration_seconds_count{variant=\"polling\",method=\"POST\",route=\"/steps/:userId\"}[30s]))",
           "legendFormat": "polling CPU-ms per ingest",
           "datasource": {
             "type": "prometheus",
@@ -1796,7 +1796,7 @@
     },
     {
       "id": 19,
-      "title": "cAdvisor CPU and Memory (Linux only \u2014 empty on Docker Desktop)",
+      "title": "cAdvisor (Linux only, empty on Docker Desktop)",
       "type": "timeseries",
       "description": "Linux cgroups metrics via cAdvisor. Not available on Docker Desktop / WSL without cAdvisor \u2014 expect no data here; use process_cpu_seconds_total and process_resident_memory_bytes instead.",
       "gridPos": {
@@ -1951,7 +1951,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "100 * sum(rate(poll_empty_total{variant=\"polling\"}[1m])) / sum(rate(poll_requests_total{variant=\"polling\"}[1m])) or vector(0)",
+          "expr": "100 * sum(rate(poll_empty_total{variant=\"polling\"}[1m])) / sum(rate(poll_requests_total{variant=\"polling\"}[1m]))",
           "legendFormat": "loadgen empty-poll %",
           "datasource": {
             "type": "prometheus",
@@ -1960,7 +1960,7 @@
         },
         {
           "refId": "B",
-          "expr": "100 * sum(rate(poll_responses_total{variant=\"polling\",has_new=\"false\"}[30s])) / sum(rate(poll_responses_total{variant=\"polling\"}[30s])) or vector(0)",
+          "expr": "100 * sum(rate(poll_responses_total{variant=\"polling\",has_new=\"false\"}[30s])) / sum(rate(poll_responses_total{variant=\"polling\"}[30s]))",
           "legendFormat": "app empty-poll %",
           "datasource": {
             "type": "prometheus",
