@@ -1,0 +1,20 @@
+================================================
+EXP=e1 RUN_LABEL=smoke
+Stages        : 10 → 50 users
+HOLD_S/WARMUP : 60/15
+Poll interval : 5000 ms  Timeout: 7000 ms
+Worker cap    : 250 per variant
+Cycle         : 15s fixed (think 1-6s)  version=v2-openloop
+CSV           : /mnt/c/Users/soura/OneDrive/Documentos/GitHub/Fitness_Tracking_System/benchmark/results/e1-smoke-levels.csv
+================================================
+[STAGE] start users=10 workers/variant=10 gen=1
+[WARMUP] 10 users for 15s
+[HOLD] 10 users for 60s (recording)
+[CSV] appended 2 rows → /mnt/c/Users/soura/OneDrive/Documentos/GitHub/Fitness_Tracking_System/benchmark/results/e1-smoke-levels.csv
+[STAGE DONE] 10u event_del=39 poll_del=39 poll_req=118 empty_share=0.661
+[STAGE] start users=50 workers/variant=50 gen=2
+[WARMUP] 50 users for 15s
+[HOLD] 50 users for 60s (recording)
+[CSV] appended 2 rows → /mnt/c/Users/soura/OneDrive/Documentos/GitHub/Fitness_Tracking_System/benchmark/results/e1-smoke-levels.csv
+[STAGE DONE] 50u event_del=202 poll_del=194 poll_req=596 empty_share=0.663
+[ALL STAGES DONE] → /mnt/c/Users/soura/OneDrive/Documentos/GitHub/Fitness_Tracking_System/benchmark/results/e1-smoke-levels.csv

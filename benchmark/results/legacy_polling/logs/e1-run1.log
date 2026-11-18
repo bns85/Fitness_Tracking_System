@@ -1,0 +1,31 @@
+================================================
+EXP=e1 RUN_LABEL=run1
+Stages        : 10 → 50 → 100 → 200 users
+HOLD_S/WARMUP : 120/20
+Poll interval : 5000 ms  Timeout: 7000 ms
+Worker cap    : 250 per variant
+Cycle         : 15s fixed (think 1-6s)  version=v2-openloop
+CSV           : /mnt/c/Users/soura/OneDrive/Documentos/GitHub/Fitness_Tracking_System/benchmark/results/e1-run1-levels.csv
+================================================
+[STAGE] start users=10 workers/variant=10 gen=1
+[WARMUP] 10 users for 20s
+[HOLD] 10 users for 120s (recording)
+[CSV] appended 2 rows → /mnt/c/Users/soura/OneDrive/Documentos/GitHub/Fitness_Tracking_System/benchmark/results/e1-run1-levels.csv
+[WARN] 10u: offered load differs (ingest_n event=76 polling=72)
+[STAGE DONE] 10u event_del=76 poll_del=72 poll_req=228 empty_share=0.671
+[STAGE] start users=50 workers/variant=50 gen=2
+[WARMUP] 50 users for 20s
+[HOLD] 50 users for 120s (recording)
+[CSV] appended 2 rows → /mnt/c/Users/soura/OneDrive/Documentos/GitHub/Fitness_Tracking_System/benchmark/results/e1-run1-levels.csv
+[STAGE DONE] 50u event_del=379 poll_del=365 poll_req=1130 empty_share=0.666
+[STAGE] start users=100 workers/variant=100 gen=3
+[WARMUP] 100 users for 20s
+[HOLD] 100 users for 120s (recording)
+[CSV] appended 2 rows → /mnt/c/Users/soura/OneDrive/Documentos/GitHub/Fitness_Tracking_System/benchmark/results/e1-run1-levels.csv
+[STAGE DONE] 100u event_del=743 poll_del=750 poll_req=2243 empty_share=0.663
+[STAGE] start users=200 workers/variant=200 gen=4
+[WARMUP] 200 users for 20s
+[HOLD] 200 users for 120s (recording)
+[CSV] appended 2 rows → /mnt/c/Users/soura/OneDrive/Documentos/GitHub/Fitness_Tracking_System/benchmark/results/e1-run1-levels.csv
+[STAGE DONE] 200u event_del=1500 poll_del=1471 poll_req=4506 empty_share=0.665
+[ALL STAGES DONE] → /mnt/c/Users/soura/OneDrive/Documentos/GitHub/Fitness_Tracking_System/benchmark/results/e1-run1-levels.csv
