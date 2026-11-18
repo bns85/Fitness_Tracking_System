@@ -5,6 +5,7 @@ const Sleep = require("../models/Sleep");
 const Goal = require("../models/Goal");
 const Weight = require("../models/Weight");
 const cache = require("../utils/cache");
+const { getGoalCurrent, buildGoalView, sortGoalViews } = require("../utils/goalProgress");
 
 // In-memory fallback when MongoDB is unavailable
 const memStore = {
@@ -92,26 +93,17 @@ async function buildDashboardFromDB(userId) {
     },
   ]);
 
-  const goals = await Goal.find({ userId, achieved: false });
+  const goals = await Goal.find({ userId, active: { $ne: false } });
 
   const summary = todayData[0] || {};
   const sl = sleepStats[0] || {};
 
-  const goalProgress = goals.map((goal) => {
-    let current = 0;
-    switch (goal.type) {
-      case "steps": current = summary.latestSteps || 0; break;
-      case "calories": current = summary.latestCalories || 0; break;
-      case "distance": current = summary.latestDistance || 0; break;
-    }
-    return {
-      type: goal.type,
-      target: goal.target,
-      current,
-      percentage: goal.target > 0 ? Math.round((current / goal.target) * 100) : 0,
-      achieved: current >= goal.target,
-    };
-  });
+  // Goal progress computed from real activity data for each goal's period
+  const goalProgress = sortGoalViews(
+    await Promise.all(
+      goals.map(async (goal) => buildGoalView(goal, await getGoalCurrent(goal)))
+    )
+  );
 
   return {
     userId,
@@ -161,21 +153,19 @@ function buildDashboardFromMemory(userId) {
     ? sleepEntries.reduce((sum, s) => sum + s.totalMinutesAsleep, 0) / sleepEntries.length
     : 0;
 
-  const goals = memStore.goals.filter((g) => g.userId === userId).map((g) => {
-    let current = 0;
-    switch (g.type) {
-      case "steps": current = totalSteps; break;
-      case "calories": current = totalCalories; break;
-      case "distance": current = totalDistance; break;
-    }
-    return {
-      type: g.type,
-      target: g.target,
-      current,
-      percentage: g.target > 0 ? Math.round((current / g.target) * 100) : 0,
-      achieved: current >= g.target,
-    };
-  });
+  const goals = sortGoalViews(
+    memStore.goals
+      .filter((g) => g.userId === userId && g.active !== false)
+      .map((g) => {
+        let current = 0;
+        switch (g.type) {
+          case "steps": current = totalSteps; break;
+          case "calories": current = totalCalories; break;
+          case "distance": current = totalDistance; break;
+        }
+        return buildGoalView(g, current);
+      })
+  );
 
   return {
     userId,

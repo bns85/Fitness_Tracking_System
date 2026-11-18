@@ -20,27 +20,68 @@ function setProgress(current, target) {
   $("goal-message").textContent = percent >= 100 ? "You reached your daily target." : percent >= 70 ? "You are nearly there. Keep moving." : "Your next walk is waiting.";
 }
 
+const GOAL_META = {
+  steps: { icon: "⌁", unit: "steps" },
+  calories: { icon: "✦", unit: "calories" },
+  distance: { icon: "➚", unit: "km" },
+  workouts: { icon: "◉", unit: "workouts" },
+};
+
+function goalCardHtml(goal) {
+  const meta = GOAL_META[goal.type] || { icon: "◎", unit: "" };
+  const percent = Math.min(100, Math.max(0, Number(goal.percentage) || 0));
+  const period = goal.period === "weekly" ? "Weekly" : "Daily";
+  const typeLabel = goal.type.charAt(0).toUpperCase() + goal.type.slice(1);
+  const completed = goal.status === "completed" || goal.achieved;
+  const status = completed ? "completed" : "active";
+  const statusLabel = completed ? "Completed" : "Active";
+  const current = formatNumber(goal.current);
+  const target = formatNumber(goal.target);
+  const remaining = formatNumber(goal.remaining ?? Math.max(0, (Number(goal.target) || 0) - (Number(goal.current) || 0)));
+  return `<div class="goal-card">
+    <div class="goal-card-top">
+      <span class="goal-row-icon">${meta.icon}</span>
+      <div class="goal-card-heading">
+        <span class="goal-card-title">${period} ${typeLabel} Goal</span>
+        <span class="goal-card-period">${period} &middot; Target ${target} ${meta.unit}</span>
+      </div>
+      <span class="goal-status-chip ${status}">${statusLabel}</span>
+    </div>
+    <span class="goal-card-nums">${current} / ${target}<span>${meta.unit}</span></span>
+    <div class="goal-row-bar"><span style="width:${percent}%"></span></div>
+    <div class="goal-card-meta"><span>${percent}% completed</span><span>${remaining} ${meta.unit} remaining</span></div>
+  </div>`;
+}
+
 function renderGoals(goals) {
   $("goal-count").textContent = `${goals.length} ${goals.length === 1 ? "goal" : "goals"}`;
   if (!goals.length) {
-    $("goals-list").innerHTML = '<div class="empty-goals">No active goals found for this user.</div>';
+    $("goals-list").innerHTML = '<div class="empty-goals">No active goals found for this user. Use "+ Set New Goal" to create one.</div>';
     return;
   }
-  $("goals-list").innerHTML = goals.map((goal) => {
-    const percent = Math.min(100, Math.max(0, Number(goal.percentage) || 0));
-    const icon = goal.type === "steps" ? "⌁" : goal.type === "calories" ? "✦" : "➚";
-    return `<div class="goal-row"><span class="goal-row-icon">${icon}</span><div><span class="goal-row-label">${goal.type}</span><div class="goal-row-bar"><span style="width:${percent}%"></span></div></div><span class="goal-row-percent">${percent}%</span></div>`;
-  }).join("");
+  $("goals-list").innerHTML = goals.map(goalCardHtml).join("");
 }
 
 function renderDashboard(payload) {
   const data = payload.data || {};
   const activity = data.latestActivity || {};
   const averages = data.weeklyAverages || {};
-  const stepsGoal = (data.goals || []).find((goal) => goal.type === "steps") || { target: 10000, current: activity.steps || 0 };
+  const goals = data.goals || [];
+  const stepsGoal =
+    goals.find((goal) => goal.type === "steps" && goal.period === "daily") ||
+    goals.find((goal) => goal.type === "steps") ||
+    null;
   const calories = activity.activeCalories ?? activity.calories ?? 0;
 
-  setProgress(activity.steps || stepsGoal.current || 0, stepsGoal.target || 10000);
+  // The hero ring follows the user's saved steps goal (daily preferred);
+  // it only falls back to the built-in 10,000 target when no steps goal exists.
+  if (stepsGoal) {
+    $("goal-kicker").textContent = `${(stepsGoal.period || "daily").toUpperCase()} STEPS`;
+    setProgress(Number(stepsGoal.current) || 0, Number(stepsGoal.target) || 10000);
+  } else {
+    $("goal-kicker").textContent = "DAILY STEPS";
+    setProgress(activity.steps || 0, 10000);
+  }
   $("metric-steps").textContent = formatNumber(activity.steps);
   $("metric-calories").textContent = formatNumber(calories);
   $("metric-distance").textContent = (Number(activity.distance) || 0).toFixed(2);
@@ -50,7 +91,7 @@ function renderDashboard(payload) {
   $("sleep-hours").textContent = formatSleep((data.sleep || {}).avgMinutesAsleep);
   $("updated-label").textContent = payload.source === "cache" ? "Updated from cache" : "Updated just now";
   $("sync-label").textContent = payload.source === "cache" ? "Fast cached sync" : "Live data synced";
-  renderGoals(data.goals || []);
+  renderGoals(goals);
 }
 
 function renderNotifications(notifications) {
@@ -98,7 +139,11 @@ async function loadDashboard() {
 }
 
 $("refresh-button").addEventListener("click", loadDashboard);
-$("user-id").addEventListener("change", () => { loadDashboard(); loadNotifications(); });
+$("user-id").addEventListener("change", () => {
+  loadDashboard();
+  loadNotifications();
+  connectNotificationStream($("user-id").value.trim());
+});
 $("notification-button").addEventListener("click", () => {
   const popover = $("notification-popover");
   popover.hidden = !popover.hidden;
@@ -107,6 +152,92 @@ $("notification-button").addEventListener("click", () => {
 });
 loadDashboard();
 loadNotifications();
+
+// ============================================================
+// Set New Goal — goal creation modal (Event-Driven flow)
+// ============================================================
+function openGoalModal() {
+  $("goal-modal").hidden = false;
+  $("goal-form-error").textContent = "";
+  $("goal-target").value = "";
+  $("goal-start-date").value = new Date().toISOString().slice(0, 10);
+  $("goal-target").focus();
+}
+
+function closeGoalModal() {
+  $("goal-modal").hidden = true;
+  $("goal-form-error").textContent = "";
+}
+
+$("add-goal-button").addEventListener("click", openGoalModal);
+$("goal-modal-close").addEventListener("click", closeGoalModal);
+$("goal-cancel").addEventListener("click", closeGoalModal);
+$("goal-modal").addEventListener("click", (event) => {
+  if (event.target === $("goal-modal")) closeGoalModal();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !$("goal-modal").hidden) closeGoalModal();
+});
+
+$("goal-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const error = $("goal-form-error");
+  error.textContent = "";
+
+  const userId = $("user-id").value.trim();
+  const type = $("goal-type").value;
+  const period = $("goal-period").value;
+  const target = Number($("goal-target").value);
+  const startDate = $("goal-start-date").value || undefined;
+
+  if (!userId) { error.textContent = "Enter a user id first."; return; }
+  if (!Number.isFinite(target) || target <= 0) { error.textContent = "Target value must be a positive number."; return; }
+
+  const saveButton = $("goal-save");
+  saveButton.disabled = true;
+  try {
+    const response = await fetch(`${API_BASE}/goals`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, type, target, period, startDate }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      error.textContent = body.message || `Could not save goal (${response.status}).`;
+      return;
+    }
+    closeGoalModal();
+    await loadDashboard();
+  } catch (requestError) {
+    error.textContent = "Backend unreachable. Make sure the server is running on port 5001.";
+  } finally {
+    saveButton.disabled = false;
+  }
+});
+
+// ============================================================
+// Live notifications via Server-Sent Events (Event-Driven flow)
+// ============================================================
+let notificationSource = null;
+
+function connectNotificationStream(userId) {
+  if (notificationSource) {
+    notificationSource.close();
+    notificationSource = null;
+  }
+  if (!userId || typeof EventSource === "undefined") return;
+
+  notificationSource = new EventSource(`${API_BASE}/notifications/${encodeURIComponent(userId)}/stream`);
+  notificationSource.onmessage = () => {
+    loadNotifications();
+    loadDashboard();
+  };
+  notificationSource.onerror = () => {
+    // Browser auto-reconnects; nothing to do here.
+  };
+}
+
+connectNotificationStream($("user-id").value.trim());
 
 // ============================================================
 // Workout session (Sprint 2 - Story 3) — Event-Driven flow

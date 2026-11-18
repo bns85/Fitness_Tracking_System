@@ -1,9 +1,10 @@
 const mongoose = require("mongoose");
 const Notification = require("../models/Notification");
-const Goal = require("../models/Goal");
-const FitnessData = require("../models/FitnessData");
 const config = require("../config");
 const { pollResponses } = require("../metrics");
+const { evaluateGoals } = require("../utils/goalProgress");
+const { createGoalReachedNotification } = require("../utils/goalNotifications");
+const cache = require("../utils/cache");
 
 const QUIET = process.env.QUIET === "1";
 
@@ -14,78 +15,58 @@ function isDBConnected() {
   return mongoose.connection.readyState === 1;
 }
 
-function todayStart() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 /**
  * Check if user's active goals are reached (Polling-based goal evaluation)
+ * Evaluates goals against real FitnessData for the correct daily/weekly period
+ * and creates at most one GOAL_REACHED notification per goal per period.
  */
 async function checkAndTriggerGoalNotifications(userId) {
   try {
-    const today = todayStart();
-    let currentSteps = 0;
-
     if (isDBConnected()) {
-      const fitness = await FitnessData.findOne({ userId, date: { $gte: today } });
-      if (fitness) currentSteps = fitness.totalSteps || 0;
-
-      const activeGoals = await Goal.find({ userId, type: "steps", achieved: false });
-      for (const goal of activeGoals) {
-        if (currentSteps >= goal.target) {
-          goal.achieved = true;
-          goal.current = currentSteps;
-          await goal.save();
-
-          // Check if notification already exists to avoid duplicate
-          const existing = await Notification.findOne({
-            userId,
-            type: "GOAL_REACHED",
-            createdAt: { $gte: today },
-          });
-
-          if (!existing) {
-            const notif = await Notification.create({
-              userId,
-              type: "GOAL_REACHED",
-              title: "🎉 Daily Step Goal Achieved!",
-              message: `Awesome job! You reached your goal of ${goal.target.toLocaleString()} steps with ${currentSteps.toLocaleString()} steps today! 🏆`,
-              read: false,
-            });
-            if (!QUIET) console.log(`[POLL ALERT] In-app notification created for ${userId}: Goal reached (${currentSteps}/${goal.target})`);
-            return notif;
+      let created = null;
+      await evaluateGoals({
+        userId,
+        onReached: async (payload) => {
+          const notif = await createGoalReachedNotification(payload);
+          if (notif) {
+            created = notif;
+            await cache.del(`dashboard:${payload.userId}`);
+            if (!QUIET) console.log(`[POLL ALERT] In-app notification created for ${payload.userId}: Goal reached (${payload.current}/${payload.target})`);
           }
-        }
-      }
-    } else {
-      // Memory store check
-      const { memStore } = require("./dashboardController");
-      const fit = memStore.fitnessData.find(
-        (f) => f.userId === userId && new Date(f.date).getTime() >= today.getTime()
-      );
-      if (fit) currentSteps = fit.totalSteps || 0;
+        },
+      });
+      return created;
+    }
 
-      const activeGoal = memStore.goals.find(
-        (g) => g.userId === userId && g.type === "steps" && !g.achieved
-      );
-      if (activeGoal && currentSteps >= activeGoal.target) {
-        activeGoal.achieved = true;
-        activeGoal.current = currentSteps;
+    // Memory store fallback
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const { memStore } = require("./dashboardController");
+    const fit = memStore.fitnessData.find(
+      (f) => f.userId === userId && new Date(f.date).getTime() >= today.getTime()
+    );
+    const currentSteps = fit ? fit.totalSteps || 0 : 0;
 
-        const notif = {
-          _id: `mem_notif_${Date.now()}`,
-          userId,
-          type: "GOAL_REACHED",
-          title: "🎉 Daily Step Goal Achieved!",
-          message: `Awesome job! You reached your goal of ${activeGoal.target.toLocaleString()} steps with ${currentSteps.toLocaleString()} steps today! 🏆`,
-          read: false,
-          createdAt: new Date(),
-        };
-        memNotifications.unshift(notif);
-        return notif;
-      }
+    const activeGoal = memStore.goals.find(
+      (g) => g.userId === userId && g.type === "steps" && !g.achieved && g.active !== false
+    );
+    if (activeGoal && currentSteps >= activeGoal.target) {
+      activeGoal.achieved = true;
+      activeGoal.current = currentSteps;
+
+      const notif = {
+        _id: `mem_notif_${Date.now()}`,
+        userId,
+        type: "GOAL_REACHED",
+        title: "🎉 Daily Steps Goal Achieved!",
+        message: `Congratulations! You reached your daily goal of ${Number(activeGoal.target).toLocaleString()} steps.`,
+        read: false,
+        goalId: activeGoal._id ? String(activeGoal._id) : null,
+        periodKey: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`,
+        createdAt: new Date(),
+      };
+      memNotifications.unshift(notif);
+      return notif;
     }
   } catch (err) {
     console.error("Error in checkAndTriggerGoalNotifications:", err.message);

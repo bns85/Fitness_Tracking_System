@@ -1,11 +1,25 @@
 const { eventBus, EVENTS } = require("../utils/eventBus");
-const Goal = require("../models/Goal");
 const FitnessData = require("../models/FitnessData");
 const Notification = require("../models/Notification");
 const cache = require("../utils/cache");
+const { evaluateGoals, capitalize, TYPE_UNIT } = require("../utils/goalProgress");
 
 const QUIET = process.env.QUIET === "1";
 let isInitialized = false;
+
+function buildGoalReachedNotification(payload) {
+  const { goalType, period = "daily", target, unit } = payload;
+  const resolvedUnit = unit || TYPE_UNIT[goalType] || "";
+  return {
+    userId: payload.userId,
+    type: "GOAL_REACHED",
+    title: `🎉 ${capitalize(period)} ${capitalize(goalType)} Goal Achieved!`,
+    message: `Congratulations! You reached your ${period} goal of ${Number(target).toLocaleString()} ${resolvedUnit}.`,
+    read: false,
+    goalId: payload.goalId,
+    periodKey: payload.periodKey,
+  };
+}
 
 function initGoalConsumers() {
   if (isInitialized) return;
@@ -38,32 +52,21 @@ function initGoalConsumers() {
         { upsert: true, new: true }
       );
 
-      const totalSteps = fitnessRecord.totalSteps;
+      if (!QUIET) console.log(`📊 [FITNESS AGGREGATE] Total steps today for ${userId}: ${fitnessRecord.totalSteps}`);
 
-      // Check active Step Goals for this user
-      const activeGoals = await Goal.find({ userId, type: "steps", achieved: false });
+      // Evaluate every active goal (steps / calories / distance, daily / weekly)
+      // against the real activity record. GOAL_REACHED is emitted at most once
+      // per goal per period (atomic claim inside evaluateGoals).
+      await evaluateGoals({
+        userId,
+        onReached: async (payload) => {
+          eventBus.publish(EVENTS.GOAL_REACHED, payload);
+        },
+      });
 
-      for (const goal of activeGoals) {
-        goal.current = totalSteps;
-
-        // Check if target is reached!
-        if (totalSteps >= goal.target) {
-          goal.achieved = true;
-          await goal.save();
-
-          if (!QUIET) console.log(`🎯 [GOAL ACHIEVED] User ${userId} reached ${totalSteps} / ${goal.target} steps!`);
-
-          // Publish GOAL_REACHED event to Event Bus
-          eventBus.publish(EVENTS.GOAL_REACHED, {
-            userId,
-            goalType: "steps",
-            target: goal.target,
-            current: totalSteps
-          });
-        } else {
-          await goal.save();
-        }
-      }
+      // Re-invalidate after goal evaluation so goal status is never served stale
+      await cache.del(cacheKey);
+      await cache.del(`dashboard:${userId}`);
     } catch (error) {
       console.error("❌ Error in STEP_UPDATED consumer:", error.message);
     }
@@ -74,28 +77,42 @@ function initGoalConsumers() {
   // ----------------------------------------------------
   eventBus.on(EVENTS.GOAL_REACHED, async (data) => {
     try {
-      const { userId, target, current } = data;
+      const { userId, goalId, periodKey, target, current } = data;
       if (!QUIET) console.log(`🔔 [NOTIFICATION CONSUMER] Creating alert for user ${userId}...`);
 
-      const newNotification = await Notification.create({
-        userId,
-        type: "GOAL_REACHED",
-        title: "🎉 Daily Step Goal Achieved!",
-        message: `Awesome job! You reached your goal of ${target.toLocaleString()} steps with ${current.toLocaleString()} steps today! 🏆`,
-        read: false
-      });
+      // De-duplication: exactly one notification per goal per goal period
+      if (goalId && periodKey) {
+        const existing = await Notification.findOne({
+          userId,
+          type: "GOAL_REACHED",
+          goalId,
+          periodKey,
+        });
+        if (existing) {
+          if (!QUIET) console.log(`⏭️ [NOTIFICATION CONSUMER] Goal ${goalId} already notified for ${periodKey}, skipping duplicate`);
+          return;
+        }
+      }
+
+      const newNotification = await Notification.create(
+        buildGoalReachedNotification(data)
+      );
 
       if (!QUIET) console.log(`✅ [NOTIFICATION CREATED] ID: ${newNotification._id}`);
 
       // Publish NOTIFICATION_CREATED event for real-time SSE push
       eventBus.publish(EVENTS.NOTIFICATION_CREATED, {
         userId,
-        notification: newNotification
+        notification: newNotification,
       });
+
+      if (!QUIET && current !== undefined) {
+        console.log(`🎯 [GOAL ACHIEVED] User ${userId}: ${current} / ${target}`);
+      }
     } catch (error) {
       console.error("❌ Error in GOAL_REACHED consumer:", error.message);
     }
   });
 }
 
-module.exports = { initGoalConsumers };
+module.exports = { initGoalConsumers, buildGoalReachedNotification };

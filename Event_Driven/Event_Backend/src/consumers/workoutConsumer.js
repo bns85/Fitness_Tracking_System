@@ -2,8 +2,8 @@ const { eventBus, EVENTS } = require("../utils/eventBus");
 const Workout = require("../models/Workout");
 const Notification = require("../models/Notification");
 const FitnessData = require("../models/FitnessData");
-const Goal = require("../models/Goal");
 const cache = require("../utils/cache");
+const { evaluateGoals } = require("../utils/goalProgress");
 
 const QUIET = process.env.QUIET === "1";
 let isInitialized = false;
@@ -108,24 +108,15 @@ function initWorkoutConsumers() {
           `📊 [FITNESS AGGREGATE] Updated daily fitness for user ${userId}: +${stepsToAdd} steps, +${caloriesToAdd} kcal, +${activeMinutesToAdd} active mins (Total steps today: ${updatedFitness.totalSteps})`
         );
 
-        // Check active goals if steps or calories increased
-        if (stepsToAdd > 0) {
-          const activeStepGoals = await Goal.find({ userId, type: "steps", achieved: false });
-          for (const goal of activeStepGoals) {
-            goal.current = updatedFitness.totalSteps;
-            if (updatedFitness.totalSteps >= goal.target) {
-              goal.achieved = true;
-              await goal.save();
-              eventBus.publish(EVENTS.GOAL_REACHED, {
-                userId,
-                goalType: "steps",
-                target: goal.target,
-                current: updatedFitness.totalSteps,
-              });
-            } else {
-              await goal.save();
-            }
-          }
+        // Evaluate active goals (steps / calories / distance) against the
+        // updated fitness record — GOAL_REACHED emitted once per goal period
+        if (stepsToAdd > 0 || caloriesToAdd > 0 || distanceToAdd > 0) {
+          await evaluateGoals({
+            userId,
+            onReached: async (payload) => {
+              eventBus.publish(EVENTS.GOAL_REACHED, payload);
+            },
+          });
         }
       }
 

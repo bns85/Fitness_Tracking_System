@@ -7,7 +7,6 @@ const {
   pollNotifications,
   longPollNotifications,
 } = require("../controllers/notificationController");
-const Goal = require("../models/Goal");
 const FitnessData = require("../models/FitnessData");
 
 const router = express.Router();
@@ -39,23 +38,9 @@ router.get("/notifications/:userId", getNotifications);
 router.put("/notifications/:id/read", markAsRead);
 
 // ============================================================
-// HELPER ROUTES FOR TESTING GOALS & STEPS UNDER POLLING
+// HELPER ROUTES FOR TESTING STEPS UNDER POLLING
+// (Goal CRUD lives in routes/goal.js — POST /api/goals etc.)
 // ============================================================
-
-// Set a user goal
-router.post("/goals", async (req, res) => {
-  try {
-    const { userId, type = "steps", target = 10000 } = req.body;
-    const goal = await Goal.findOneAndUpdate(
-      { userId, type },
-      { target, current: 0, achieved: false },
-      { upsert: true, new: true }
-    );
-    res.json({ success: true, goal });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
 
 // Ingest or add steps for user
 router.post("/steps/:userId", async (req, res) => {

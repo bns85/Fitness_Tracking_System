@@ -12,6 +12,7 @@
     "test": "node tests/runAllTests.js",
     "test:slow-network": "node tests/testSlowNetwork.js",
     "test:integration": "node tests/testIntegrationSensorEventNotification.js",
+    "test:goals": "node tests/testGoalFeature.js",
     "test:workout": "node tests/testWorkoutFlow.js",
     "test:db": "node tests/testWorkoutDatabase.js"
   },

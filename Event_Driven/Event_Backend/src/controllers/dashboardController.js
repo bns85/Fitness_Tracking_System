@@ -4,6 +4,7 @@ const Sleep = require("../models/Sleep");
 const Goal = require("../models/Goal");
 const Workout = require("../models/Workout");
 const cache = require("../utils/cache");
+const { getGoalCurrent, buildGoalView, sortGoalViews } = require("../utils/goalProgress");
 
 const getDashboardSummary = async (req, res) => {
   try {
@@ -68,8 +69,8 @@ const getDashboardSummary = async (req, res) => {
       },
     ]);
 
-    // Get active goals
-    const goals = await Goal.find({ userId, achieved: false });
+    // Get goals for the user (active + completed this period, never deactivated)
+    const goals = await Goal.find({ userId, active: { $ne: false } });
 
     // Get recent completed workouts (Story 4: dashboard workout summaries)
     const recentWorkouts = await Workout.find({ userId, status: "completed" })
@@ -80,28 +81,12 @@ const getDashboardSummary = async (req, res) => {
     const hr = heartRateStats[0] || {};
     const sl = sleepStats[0] || {};
 
-    // Calculate goal progress based on latest data
-    const goalProgress = goals.map((goal) => {
-      let current = 0;
-      switch (goal.type) {
-        case "steps":
-          current = summary.latestSteps || 0;
-          break;
-        case "calories":
-          current = summary.latestCalories || 0;
-          break;
-        case "distance":
-          current = summary.latestDistance || 0;
-          break;
-      }
-      return {
-        type: goal.type,
-        target: goal.target,
-        current,
-        percentage: goal.target > 0 ? Math.round((current / goal.target) * 100) : 0,
-        achieved: current >= goal.target,
-      };
-    });
+    // Calculate goal progress from real activity data for the goal's period
+    const goalProgress = sortGoalViews(
+      await Promise.all(
+        goals.map(async (goal) => buildGoalView(goal, await getGoalCurrent(goal)))
+      )
+    );
 
     const dashboardData = {
       userId,

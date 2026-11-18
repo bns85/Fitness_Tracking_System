@@ -59,7 +59,7 @@
             <div class="panel-heading"><div><p class="eyebrow">TODAY'S FOCUS</p><h2>Step into your goal</h2></div><span class="date-chip" id="activity-date">Today</span></div>
             <div class="goal-content">
               <div class="ring-wrap"><svg class="progress-ring" viewBox="0 0 220 220" aria-label="Step goal progress"><circle class="ring-track" cx="110" cy="110" r="87"></circle><circle class="ring-value" id="goal-ring" cx="110" cy="110" r="87"></circle></svg><div class="ring-label"><strong id="goal-percent">0%</strong><span>complete</span></div></div>
-              <div class="goal-copy"><span class="goal-kicker">DAILY STEPS</span><div class="goal-number"><strong id="steps-value">0</strong><span>/ <b id="steps-target">10,000</b></span></div><p id="goal-message">Your next walk is waiting.</p><div class="goal-meta"><span class="goal-meta-icon">↗</span><span><strong id="steps-left">10,000</strong> steps to go</span></div></div>
+              <div class="goal-copy"><span class="goal-kicker" id="goal-kicker">DAILY STEPS</span><div class="goal-number"><strong id="steps-value">0</strong><span>/ <b id="steps-target">10,000</b></span></div><p id="goal-message">Your next walk is waiting.</p><div class="goal-meta"><span class="goal-meta-icon">↗</span><span><strong id="steps-left">10,000</strong> steps to go</span></div></div>
             </div>
           </article>
           <article class="motivation-panel"><span class="sun-mark">✦</span><p class="eyebrow">A LITTLE MOMENTUM</p><h2>Move your body,<br /><em>clear your mind.</em></h2><div class="quote-line"></div><p class="quote">“The secret of getting ahead is getting started.”</p><span class="quote-author">— Mark Twain</span></article>
@@ -119,11 +119,57 @@
 
         <section class="lower-grid" id="insights">
           <article class="insight-panel"><div class="section-heading compact"><div><p class="eyebrow">WEEKLY RHYTHM</p><h2>Your average day</h2></div><span class="small-chip">Last 7 days</span></div><div class="insight-stats"><div><span>Steps</span><strong id="average-steps">0</strong><small>per day</small></div><div><span>Active minutes</span><strong id="active-minutes">0</strong><small>per day</small></div><div><span>Sleep</span><strong id="sleep-hours">0h 00m</strong><small>average</small></div></div></article>
-          <article class="goal-list-panel"><div class="section-heading compact"><div><p class="eyebrow">KEEP GOING</p><h2>Active goals</h2></div><span class="small-chip" id="goal-count">0 goals</span></div><div id="goals-list" class="goals-list"><div class="empty-goals">Your goals will appear here after syncing.</div></div></article>
+          <article class="goal-list-panel">
+            <div class="section-heading compact">
+              <div><p class="eyebrow">KEEP GOING</p><h2>Active goals</h2></div>
+              <div class="goal-heading-actions">
+                <button type="button" class="goal-add-button" id="add-goal-button" aria-haspopup="dialog">+ Set New Goal</button>
+                <span class="small-chip" id="goal-count">0 goals</span>
+              </div>
+            </div>
+            <div id="goals-list" class="goals-list"><div class="empty-goals">Your goals will appear here after syncing.</div></div>
+          </article>
         </section>
         <p class="error-message" id="error-message" role="alert"></p>
       </main>
     </div>
+
+    <!-- Set New Goal modal -->
+    <div class="goal-modal-backdrop" id="goal-modal" hidden>
+      <div class="goal-modal" role="dialog" aria-modal="true" aria-labelledby="goal-modal-title">
+        <div class="goal-modal-header">
+          <h3 id="goal-modal-title">Set a new goal</h3>
+          <button type="button" class="goal-modal-close" id="goal-modal-close" aria-label="Close goal form">&times;</button>
+        </div>
+        <form class="goal-form" id="goal-form" novalidate>
+          <label for="goal-type">Goal type
+            <select id="goal-type" name="goal-type">
+              <option value="steps">Steps</option>
+              <option value="calories">Calories</option>
+              <option value="distance">Distance (km)</option>
+            </select>
+          </label>
+          <label for="goal-target">Target value
+            <input type="number" id="goal-target" name="goal-target" min="1" step="any" inputmode="decimal" placeholder="e.g. 500" />
+          </label>
+          <label for="goal-period">Goal period
+            <select id="goal-period" name="goal-period">
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </label>
+          <label for="goal-start-date">Start date
+            <input type="date" id="goal-start-date" name="goal-start-date" />
+          </label>
+          <p class="goal-form-error" id="goal-form-error" role="alert"></p>
+          <div class="goal-modal-actions">
+            <button type="submit" class="goal-btn-primary" id="goal-save">Save Goal</button>
+            <button type="button" class="goal-btn-ghost" id="goal-cancel">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <script src="app.js"></script>
   </body>
 </html>

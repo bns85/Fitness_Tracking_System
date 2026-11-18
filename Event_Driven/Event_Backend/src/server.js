@@ -10,6 +10,7 @@ const dashboardRoutes = require("./routes/dashboard");
 const notificationRoutes = require("./routes/notification");
 const telemetryRoutes = require("./routes/telemetry");
 const workoutRoutes = require("./routes/workout");
+const goalRoutes = require("./routes/goal");
 const { initGoalConsumers } = require("./consumers/goalConsumer");
 const { initWorkoutConsumers } = require("./consumers/workoutConsumer");
 const app = express();
@@ -30,8 +31,10 @@ app.use("/api", dashboardRoutes);
 app.use("/api", notificationRoutes);
 app.use("/api", telemetryRoutes);
 app.use("/api", workoutRoutes);
+app.use("/api", goalRoutes);
 app.use("/", telemetryRoutes);
 app.use("/", notificationRoutes);
+app.use("/", goalRoutes);
 
 // Serve frontend for root
 app.get("/", (req, res) => {

@@ -27,6 +27,16 @@ const notificationSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+
+    // Optional goal correlation fields used for GOAL_REACHED de-duplication
+    // (one notification per goal per goal period)
+    goalId: {
+      type: String,
+    },
+
+    periodKey: {
+      type: String,
+    },
   },
   { timestamps: true }
 );

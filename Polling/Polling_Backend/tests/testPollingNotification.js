@@ -94,12 +94,14 @@ async function ensureServer() {
   const cors = require("cors");
   const dashboardRoutes = require("../src/routes/dashboard");
   const notificationRoutes = require("../src/routes/notification");
+  const goalRoutes = require("../src/routes/goal");
 
   const app = express();
   app.use(cors());
   app.use(express.json());
   app.use("/api", dashboardRoutes);
   app.use("/api", notificationRoutes);
+  app.use("/api", goalRoutes);
   app.get("/health", (req, res) => res.json({ status: "ok", architecture: "polling" }));
 
   return new Promise((resolve) => {

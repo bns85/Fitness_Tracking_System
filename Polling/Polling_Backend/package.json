@@ -9,6 +9,7 @@
     "seed": "node src/utils/seed.js",
     "ingest": "node src/utils/ingest.js",
     "test": "node tests/testPollingNotification.js",
+    "test:goals": "node tests/testGoalFeature.js",
     "test:db": "node tests/testWorkoutDatabase.js"
   },
   "keywords": [],

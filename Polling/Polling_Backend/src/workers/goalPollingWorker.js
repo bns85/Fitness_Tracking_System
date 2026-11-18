@@ -9,62 +9,43 @@
  */
 
 const mongoose = require("mongoose");
-const Goal = require("../models/Goal");
-const FitnessData = require("../models/FitnessData");
-const Notification = require("../models/Notification");
+const cache = require("../utils/cache");
+const { evaluateGoals } = require("../utils/goalProgress");
+const { createGoalReachedNotification } = require("../utils/goalNotifications");
 const config = require("../config");
 
 const QUIET = process.env.QUIET === "1";
 let pollIntervalHandle = null;
+let cycleRunning = false;
 
 function isDBConnected() {
   return mongoose.connection.readyState === 1;
 }
 
-function todayStart() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 async function runGoalPollingCycle() {
-  if (!isDBConnected()) return;
+  // Skip if DB is down or the previous cycle is still running (overlaps are pointless)
+  if (cycleRunning || !isDBConnected()) return;
+  cycleRunning = true;
 
   try {
-    const today = todayStart();
-    const activeGoals = await Goal.find({ achieved: false });
-
-    for (const goal of activeGoals) {
-      const fitness = await FitnessData.findOne({
-        userId: goal.userId,
-        date: { $gte: today },
-      });
-
-      if (fitness && fitness.totalSteps >= goal.target) {
-        goal.achieved = true;
-        goal.current = fitness.totalSteps;
-        await goal.save();
-
-        const existingNotif = await Notification.findOne({
-          userId: goal.userId,
-          type: "GOAL_REACHED",
-          createdAt: { $gte: today },
-        });
-
-        if (!existingNotif) {
-          await Notification.create({
-            userId: goal.userId,
-            type: "GOAL_REACHED",
-            title: "🎉 Daily Step Goal Achieved!",
-            message: `Awesome job! You reached your goal of ${goal.target.toLocaleString()} steps with ${fitness.totalSteps.toLocaleString()} steps today! 🏆`,
-            read: false,
-          });
-          if (!QUIET) console.log(`[POLL WORKER] Detected goal achieved for user ${goal.userId} (${fitness.totalSteps}/${goal.target})`);
+    // Evaluate every active goal (all users, all types, daily/weekly periods)
+    // against real FitnessData. Each goal is claimed atomically so a
+    // GOAL_REACHED notification is created at most once per goal per period.
+    await evaluateGoals({
+      onReached: async (payload) => {
+        await createGoalReachedNotification(payload);
+        await cache.del(`dashboard:${payload.userId}`);
+        if (!QUIET) {
+          console.log(
+            `[POLL WORKER] Goal achieved for user ${payload.userId}: ${payload.current}/${payload.target} ${payload.unit} (${payload.period} ${payload.goalType})`
+          );
         }
-      }
-    }
+      },
+    });
   } catch (err) {
-    // Avoid noisy logs during shutdown
+    if (!QUIET) console.error(`[POLL WORKER] Goal polling cycle failed: ${err.message}`);
+  } finally {
+    cycleRunning = false;
   }
 }
 

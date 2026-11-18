@@ -125,6 +125,7 @@ async function ensureServer() {
   const dashboardRoutes = require("../src/routes/dashboard");
   const notificationRoutes = require("../src/routes/notification");
   const telemetryRoutes = require("../src/routes/telemetry");
+  const goalRoutes = require("../src/routes/goal");
 
   const app = express();
   app.use(cors());
@@ -132,6 +133,7 @@ async function ensureServer() {
   app.use("/api", dashboardRoutes);
   app.use("/api", notificationRoutes);
   app.use("/api", telemetryRoutes);
+  app.use("/api", goalRoutes);
   app.get("/health", (req, res) => res.json({ status: "ok" }));
 
   return new Promise((resolve) => {
@@ -140,6 +142,26 @@ async function ensureServer() {
       resolve(server);
     });
   });
+}
+
+/**
+ * Read an event counter from the Prometheus /metrics endpoint.
+ * Used when the test attaches to an already-running external server: the
+ * in-process eventBus cannot see the container's events, but the container
+ * publishes its counters to /metrics, so we compare before/after values.
+ */
+async function readEventCounter(eventName) {
+  try {
+    const res = await makeRequest(`${BASE_URL}/metrics`);
+    if (res.status !== 200 || typeof res.body !== "string") return null;
+    const re = new RegExp(`events_published_total\\{[^}]*event="${eventName}"[^}]*\\}\\s+([0-9.]+)`);
+    const match = res.body.match(re);
+    if (match) return Number(match[1]);
+    // Metric registered but no labeled sample yet -> counter is still 0
+    return res.body.includes("# HELP events_published_total") ? 0 : null;
+  } catch (e) {
+    return null;
+  }
 }
 
 async function runIntegrationTests() {
@@ -176,6 +198,13 @@ async function runIntegrationTests() {
     eventBus.on(EVENTS.NOTIFICATION_CREATED, (d) => {
       if (d.userId === TEST_USER) interceptedEvents.notificationCreated = true;
     });
+
+    // Baseline Prometheus counters (only present when hitting an external server)
+    const metricsBefore = {
+      stepUpdated: await readEventCounter("STEP_UPDATED"),
+      goalReached: await readEventCounter("GOAL_REACHED"),
+      notificationCreated: await readEventCounter("NOTIFICATION_CREATED"),
+    };
 
     // ------------------------------------------------------------------------
     // STEP 1: Initialize User Step Goal (Target = 5,000 steps)
@@ -225,13 +254,24 @@ async function runIntegrationTests() {
     // ------------------------------------------------------------------------
     totalTests++;
     console.log(`\n${colors.yellow}[STEP 3] Event Bus: Verifying Event Dispatch & Routing${colors.reset}`);
-    if (interceptedEvents.stepUpdated && interceptedEvents.goalReached) {
+    const metricsAfter = {
+      stepUpdated: await readEventCounter("STEP_UPDATED"),
+      goalReached: await readEventCounter("GOAL_REACHED"),
+      notificationCreated: await readEventCounter("NOTIFICATION_CREATED"),
+    };
+    const counterGrew = (key) =>
+      metricsBefore[key] != null && metricsAfter[key] != null && metricsAfter[key] > metricsBefore[key];
+    const sawStep = interceptedEvents.stepUpdated || counterGrew("stepUpdated");
+    const sawGoal = interceptedEvents.goalReached || counterGrew("goalReached");
+    const sawNotif = interceptedEvents.notificationCreated || counterGrew("notificationCreated");
+
+    if (sawStep && sawGoal && sawNotif) {
       console.log(`  ${colors.green}✔ PASS:${colors.reset} EventBus received 'STEP_UPDATED' event (+6000 steps)`);
       console.log(`  ${colors.green}✔ PASS:${colors.reset} GoalConsumer evaluated target (6000 >= 5000) -> Emitted 'GOAL_REACHED'`);
       console.log(`  ${colors.green}✔ PASS:${colors.reset} EventBus dispatched 'NOTIFICATION_CREATED' for real-time delivery`);
       passedCount++;
     } else {
-      console.log(`  ${colors.red}✘ FAIL:${colors.reset} Missing events: ${JSON.stringify(interceptedEvents)}`);
+      console.log(`  ${colors.red}✘ FAIL:${colors.reset} Missing events: ${JSON.stringify(interceptedEvents)} metrics: ${JSON.stringify(metricsBefore)} -> ${JSON.stringify(metricsAfter)}`);
     }
 
     // ------------------------------------------------------------------------

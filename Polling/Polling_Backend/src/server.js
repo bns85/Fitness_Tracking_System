@@ -10,6 +10,7 @@ const connectDB = require("./config/db");
 const dashboardRoutes = require("./routes/dashboard");
 const notificationRoutes = require("./routes/notification");
 const workoutRoutes = require("./routes/workout");
+const goalRoutes = require("./routes/goal");
 const { startGoalPollingWorker } = require("./workers/goalPollingWorker");
 
 const app = express();
@@ -22,7 +23,7 @@ app.use(express.static(frontendPath));
 
 app.use(cors({
   origin: true,
-  methods: ["GET", "POST", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "OPTIONS"],
   allowedHeaders: ["Content-Type"],
   credentials: true,
 }));
@@ -33,8 +34,10 @@ app.use(express.json());
 app.use("/api", dashboardRoutes);
 app.use("/api", notificationRoutes);
 app.use("/api", workoutRoutes);
+app.use("/api", goalRoutes);
 app.use("/", dashboardRoutes);
 app.use("/", notificationRoutes);
+app.use("/", goalRoutes);
 
 // Frontend route
 app.get("/", (req, res) => {

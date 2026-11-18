@@ -1,6 +1,5 @@
 ﻿const express = require("express");
 const { eventBus, EVENTS } = require("../utils/eventBus");
-const Goal = require("../models/Goal");
 
 const router = express.Router();
 
@@ -35,24 +34,5 @@ router.post("/telemetry/steps", async (req, res) => {
   }
 });
 
-// ----------------------------------------------------
-// Set or Update a User Goal
-// POST /api/goals
-// ----------------------------------------------------
-router.post("/goals", async (req, res) => {
-  try {
-    const { userId, type = "steps", target = 10000 } = req.body;
-
-    const goal = await Goal.findOneAndUpdate(
-      { userId, type },
-      { target, current: 0, achieved: false },
-      { upsert: true, new: true }
-    );
-
-    res.json({ success: true, goal });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
 module.exports = router;
+
