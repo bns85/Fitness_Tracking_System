@@ -15,6 +15,10 @@ services:
     image: mongo:7
     container_name: mongo-event
     restart: unless-stopped
+    ports:
+      # published so host-side test suites can reach the same DB as event-app
+      # (host 27017 is taken by the Windows mongod service -> use 27019)
+      - "127.0.0.1:27019:27017"
     volumes:
       - mongo-event-data:/data/db
     healthcheck:
@@ -43,6 +47,9 @@ services:
     image: mongo:7
     container_name: mongo-polling
     restart: unless-stopped
+    ports:
+      # published so host-side test suites can reach the same DB as polling-app
+      - "127.0.0.1:27018:27017"
     volumes:
       - mongo-polling-data:/data/db
     healthcheck:
@@ -81,6 +88,9 @@ services:
       QUIET: "1"
     ports:
       - "5001:5001"
+    volumes:
+      # server serves ../../Event_Frontend relative to /app/src → /Event_Frontend
+      - ./Event_Driven/Event_Frontend:/Event_Frontend:ro
     depends_on:
       mongo-event:
         condition: service_healthy
@@ -109,6 +119,9 @@ services:
       POLL_INTERVAL_MS: "5000"
     ports:
       - "5002:5002"
+    volumes:
+      # server serves ../../Polling_Frontend relative to /app/src → /Polling_Frontend
+      - ./Polling/Polling_Frontend:/Polling_Frontend:ro
     depends_on:
       mongo-polling:
         condition: service_healthy
