@@ -42,11 +42,12 @@ services:
     networks:
       - benchmark-net
 
-  # ---------- Polling variant data stores ----------
+  # ---------- Polling variant data stores (LEGACY: only with --profile polling) ----------
   mongo-polling:
     image: mongo:7
     container_name: mongo-polling
     restart: unless-stopped
+    profiles: ["polling"]
     ports:
       # published so host-side test suites can reach the same DB as polling-app
       - "127.0.0.1:27018:27017"
@@ -64,6 +65,7 @@ services:
     image: redis:7-alpine
     container_name: redis-polling
     restart: unless-stopped
+    profiles: ["polling"]
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -108,6 +110,7 @@ services:
     build: ./Polling/Polling_Backend
     container_name: polling-app
     restart: unless-stopped
+    profiles: ["polling"]
     cpus: 1
     environment:
       PORT: "5002"
@@ -157,7 +160,7 @@ services:
       - "cadvisor:host-gateway"
     depends_on:
       - event-app
-      - polling-app
+      # polling-app is legacy (profile "polling"); Prometheus must not pull it in
     networks:
       - benchmark-net
 
