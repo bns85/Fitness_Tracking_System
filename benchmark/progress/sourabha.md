@@ -7,14 +7,17 @@ Branch: `sourabha/foundation`
 - A2 Frontend move finished: Event server serves `Frontend_Shared`, `config.js` loaded before `app.js`, all fetch/EventSource URLs built from `window.API_BASE`, compose mounts `Frontend_Shared` read-only. Committed in three commits as planned.
 - A3 Smoke test Event-Driven: tests pass, HTTP checks pass (details under Tested).
 - A4 Polling moved to legacy profile `polling`: default `docker compose up -d` starts event-app + mongo-event + redis-event + prometheus + grafana only; `--profile polling` starts polling stack (verified: polling /health 200), then stopped again.
+- A5 API contract refreshed against routes/controllers/goal code (`docs: refresh API contract`). Key corrections: goal types are steps/calories/distance (API rejects `workouts`), create/update/complete return RAW goal docs while list/dashboard return goal views, goal 400s carry an `errors[]` array, unknown route is HTML 404 (Express default), no bulk mark-all-read endpoint exists (test must loop PUT `/:id/read`), `/api/meta` documented as agreed shape but currently 404 until task C2.
+- A6 `benchmark/docs/TASK_SPEC.md` and `benchmark/docs/AGREEMENTS.md` committed (`docs: task spec and agreements`).
 
 ## In progress
-- (none)
+- (none — Day 0 code work done; waiting on [HUMAN] steps A7–A9)
 
 ## Next steps (numbered, exact)
-1. A5: refresh `benchmark/contract/API_CONTRACT.md` against current routes/controllers/goal code.
-2. A6: commit `benchmark/docs/TASK_SPEC.md` and `benchmark/docs/AGREEMENTS.md`.
-3. A7-A9 [HUMAN]: push, collaborators, branches, tag `day0-ready`.
+1. A7 [HUMAN]: Sourabha runs `gh auth login` (or token/SSH), then `git push origin main`; confirm on GitHub.
+2. A8 [HUMAN]: GitHub Settings → Collaborators: add Suhas, Poorna, Siddharth (write). Recommended: protect `main` (PR required).
+3. A9: create + push branches `sourabha/foundation`, `suhas/modular`, `poorna/micro`, `siddharth/benchmark` from `main`, then tag `day0-ready` and push it. Message to team: "Day 0 ready. `git fetch --tags`, check out your branch, read your prompt."
+4. Part B: contract tests `benchmark/contract/contract.test.js` (tag `contract-v1`).
 
 ## Needs from others
 - (none yet)
@@ -32,6 +35,7 @@ Read this file, then continue from "Next steps".
 - A3: `docker compose up -d --build event-app` via `docker.exe` (Docker Desktop had to be started manually first). Containers healthy: event-app :5001, mongo-event :27019, redis-event.
 - A3: `npm run test:goals` = 24/24 PASSED. `npm run test:integration` = 6/6 PASSED (against the running container on :5001).
 - A3 HTTP checks: `/`, `/config.js`, `/app.js`, `/styles.css` all 200; `/health` ok; `/api/notifications/:user`, `/api/dashboard/:user`, `/api/goals/:user` all 200; `/api/meta` 404 (expected until task C2); served HTML loads config.js before app.js.
+- A5 live probes (curl): goal 400 validation shape with `errors[]`, 409 `DUPLICATE_GOAL` + raw goal, telemetry 400, goal/notification/workout 404 JSON, POST /notifications missing fields → 500 Mongoose error, goal list view shape, dashboard `{source,data}`, workout active → `null`, SSE headers `text/event-stream`, unknown route → HTML `Cannot GET`, malformed JSON → HTML 400.
 
 ## Not tested
 - Browser click-through of http://localhost:5001 (no browser automation on this machine): dashboard rings, goals, notifications visuals. Sourabha should open it once by hand.
