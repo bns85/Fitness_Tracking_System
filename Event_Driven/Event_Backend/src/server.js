@@ -22,8 +22,8 @@ app.use(metricsMiddleware);
 app.use(cors());
 app.use(express.json());
 
-// Serve frontend static files
-const frontendPath = path.join(__dirname, "../../Event_Frontend");
+// Serve frontend static files (shared frontend at the repo root)
+const frontendPath = path.join(__dirname, "../../../Frontend_Shared");
 app.use(express.static(frontendPath));
 
 // API Routes
