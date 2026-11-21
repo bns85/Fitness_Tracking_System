@@ -89,8 +89,8 @@ services:
     ports:
       - "5001:5001"
     volumes:
-      # server serves ../../Event_Frontend relative to /app/src → /Event_Frontend
-      - ./Event_Driven/Event_Frontend:/Event_Frontend:ro
+      # server serves ../../../Frontend_Shared relative to /app/src → /Frontend_Shared
+      - ./Frontend_Shared:/Frontend_Shared:ro
     depends_on:
       mongo-event:
         condition: service_healthy
