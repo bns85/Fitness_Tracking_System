@@ -1,0 +1,75 @@
+version: "3.8"
+
+services:
+  mongo-modular:
+    image: mongo:7
+    container_name: mongo-modular
+    restart: unless-stopped
+    profiles: ["modular"]
+    ports:
+      - "127.0.0.1:27020:27017"
+    volumes:
+      - mongo-modular-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - benchmark-net
+
+  redis-modular:
+    image: redis:7-alpine
+    container_name: redis-modular
+    restart: unless-stopped
+    profiles: ["modular"]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - benchmark-net
+
+  modular-app:
+    build:
+      context: ./Modular_Backend
+    container_name: modular-app
+    restart: unless-stopped
+    profiles: ["modular"]
+    cpus: 1
+    mem_limit: 512m
+    environment:
+      PORT: "5011"
+      MONGO_URI: "mongodb://mongo-modular:27017/fitness_modular"
+      REDIS_URL: "redis://redis-modular:6379"
+      CACHE_TTL: "300"
+      QUIET: "1"
+      VARIANT: "modular"
+      SERVICE_NAME: "app"
+      GOAL_CPU_MS: "10"
+      FAULT_NOTIFICATIONS: "0"
+    ports:
+      - "5011:5011"
+    volumes:
+      - ../Frontend_Shared:/Frontend_Shared:ro
+    depends_on:
+      mongo-modular:
+        condition: service_healthy
+      redis-modular:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5011/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - benchmark-net
+
+volumes:
+  mongo-modular-data:
+
+networks:
+  benchmark-net:
+    external: true

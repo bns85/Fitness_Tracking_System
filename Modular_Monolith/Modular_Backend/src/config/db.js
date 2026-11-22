@@ -1,6 +1,8 @@
 const mongoose = require("mongoose");
 const config = require("./index");
 
+mongoose.set("bufferTimeoutMS", 2000);
+
 const connectDB = async () => {
   try {
     const conn = await mongoose.connect(config.mongoUri, {

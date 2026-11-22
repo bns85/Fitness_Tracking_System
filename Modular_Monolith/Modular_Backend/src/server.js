@@ -7,6 +7,29 @@ const crypto = require("crypto");
 const config = require("./config");
 const connectDB = require("./config/db");
 
+// Import Module Facades
+const telemetryModule = require("./modules/telemetry");
+const goalsModule = require("./modules/goals");
+const notificationsModule = require("./modules/notifications");
+const workoutsModule = require("./modules/workouts");
+const dashboardModule = require("./modules/dashboard");
+
+// Dependency Injection: wire dependencies across module facades
+telemetryModule.setDependencies({ goals: goalsModule });
+goalsModule.setDependencies({
+  telemetry: telemetryModule,
+  notifications: notificationsModule,
+});
+workoutsModule.setDependencies({
+  telemetry: telemetryModule,
+  notifications: notificationsModule,
+});
+dashboardModule.setDependencies({
+  telemetry: telemetryModule,
+  goals: goalsModule,
+  workouts: workoutsModule,
+});
+
 const app = express();
 
 // Request ID middleware (assigns X-Request-Id if missing)
@@ -54,6 +77,19 @@ const metaHandler = (req, res) => {
 };
 app.get("/api/meta", metaHandler);
 app.get("/meta", metaHandler);
+
+// API Routes mounted under /api and / (canonical /api first)
+app.use("/api", dashboardModule.routes);
+app.use("/api", notificationsModule.routes);
+app.use("/api", telemetryModule.routes);
+app.use("/api", workoutsModule.routes);
+app.use("/api", goalsModule.routes);
+
+app.use("/", dashboardModule.routes);
+app.use("/", notificationsModule.routes);
+app.use("/", telemetryModule.routes);
+app.use("/", workoutsModule.routes);
+app.use("/", goalsModule.routes);
 
 // Serve frontend for root
 app.get("/", (req, res) => {

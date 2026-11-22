@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  # Scaled app: no fixed container_name and no fixed host port mapping
+  modular-app:
+    container_name: null
+    ports: []
+    profiles: ["modular-scale"]
+
+  # Nginx load balancer: distributes requests across N modular-app replicas
+  modular-lb:
+    image: nginx:alpine
+    container_name: modular-lb
+    restart: unless-stopped
+    profiles: ["modular-scale"]
+    ports:
+      - "5011:80"
+    volumes:
+      - ./nginx-lb.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - modular-app
+    networks:
+      - benchmark-net
