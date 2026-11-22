@@ -1,0 +1,22 @@
+{
+  "name": "pulseflow-modular-monolith",
+  "version": "1.0.0",
+  "description": "PulseFlow Fitness Tracking System - Modular Monolith Variant",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test tests/**/*.test.js",
+    "check:modules": "node scripts/check-modules.js"
+  },
+  "keywords": ["fitness", "modular-monolith", "pulseflow"],
+  "author": "Suhas",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "ioredis": "^5.11.1",
+    "mongoose": "^8.24.4",
+    "prom-client": "^15.1.3"
+  }
+}
