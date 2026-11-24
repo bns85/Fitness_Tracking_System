@@ -1,0 +1,185 @@
+services:
+  mongo-micro:
+    image: mongo:7
+    restart: unless-stopped
+    profiles: ["micro"]
+    volumes:
+      - mongo-micro-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks: [micro-net]
+
+  redis-micro:
+    image: redis:7-alpine
+    restart: unless-stopped
+    profiles: ["micro"]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [micro-net]
+
+  telemetry-service:
+    build:
+      context: .
+      dockerfile: telemetry-service/Dockerfile
+    restart: unless-stopped
+    profiles: ["micro"]
+    cpus: 0.25
+    mem_limit: 512m
+    environment:
+      PORT: "5022"
+      MONGO_URI: "mongodb://mongo-micro:27017/fitness_telemetry"
+      REDIS_URL: "redis://redis-micro:6379"
+      CACHE_TTL: "300"
+      QUIET: "1"
+      VARIANT: "micro"
+      SERVICE_NAME: "telemetry"
+      DOWNSTREAM_TIMEOUT_MS: "1000"
+      DOWNSTREAM_RETRIES: "1"
+    depends_on:
+      mongo-micro:
+        condition: service_healthy
+      redis-micro:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5022/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [micro-net]
+
+  goal-service:
+    build:
+      context: .
+      dockerfile: goal-service/Dockerfile
+    restart: unless-stopped
+    profiles: ["micro"]
+    cpus: 0.35
+    mem_limit: 512m
+    environment:
+      PORT: "5023"
+      MONGO_URI: "mongodb://mongo-micro:27017/fitness_goals"
+      REDIS_URL: "redis://redis-micro:6379"
+      CACHE_TTL: "300"
+      QUIET: "1"
+      VARIANT: "micro"
+      SERVICE_NAME: "goal"
+      GOAL_CPU_MS: "10"
+      DOWNSTREAM_TIMEOUT_MS: "1000"
+      DOWNSTREAM_RETRIES: "1"
+    depends_on:
+      mongo-micro:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5023/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [micro-net]
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    restart: unless-stopped
+    profiles: ["micro"]
+    cpus: 0.20
+    mem_limit: 512m
+    environment:
+      PORT: "5024"
+      MONGO_URI: "mongodb://mongo-micro:27017/fitness_notifications"
+      REDIS_URL: "redis://redis-micro:6379"
+      CACHE_TTL: "300"
+      QUIET: "1"
+      VARIANT: "micro"
+      SERVICE_NAME: "notification"
+      DOWNSTREAM_TIMEOUT_MS: "1000"
+      DOWNSTREAM_RETRIES: "1"
+    depends_on:
+      mongo-micro:
+        condition: service_healthy
+      redis-micro:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5024/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [micro-net]
+
+  workout-service:
+    build:
+      context: .
+      dockerfile: workout-service/Dockerfile
+    restart: unless-stopped
+    profiles: ["micro"]
+    cpus: 0.10
+    mem_limit: 512m
+    environment:
+      PORT: "5025"
+      MONGO_URI: "mongodb://mongo-micro:27017/fitness_workouts"
+      REDIS_URL: "redis://redis-micro:6379"
+      CACHE_TTL: "300"
+      QUIET: "1"
+      VARIANT: "micro"
+      SERVICE_NAME: "workout"
+      DOWNSTREAM_TIMEOUT_MS: "1000"
+      DOWNSTREAM_RETRIES: "1"
+    depends_on:
+      mongo-micro:
+        condition: service_healthy
+      redis-micro:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5025/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [micro-net]
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    restart: unless-stopped
+    profiles: ["micro"]
+    cpus: 0.10
+    mem_limit: 256m
+    environment:
+      PORT: "5021"
+      FRONTEND_DIR: "/Frontend_Shared"
+      QUIET: "1"
+      VARIANT: "micro"
+      SERVICE_NAME: "gateway"
+    ports:
+      - "5021:5021"
+    volumes:
+      - ../Frontend_Shared:/Frontend_Shared:ro
+    depends_on:
+      telemetry-service:
+        condition: service_healthy
+      goal-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+      workout-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5021/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [micro-net]
+
+networks:
+  micro-net:
+    driver: bridge
+
+volumes:
+  mongo-micro-data:
