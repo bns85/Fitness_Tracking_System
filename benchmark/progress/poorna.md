@@ -7,14 +7,15 @@
 - P2: added telemetry schemas matching Event-Driven, step persistence, a dashboard read model with goal/workout service composition, Redis cache support, and an internal workout-total update endpoint.
 - P3-P5: added period-aware goals and one CPU-work call per evaluation; telemetry → goal → notification synchronous HTTP flow with retry, timeout, correlation ID, hop metrics, best-effort failure counters, and a Redis-backed SSE NotificationHub adapter.
 - P6: added workout lifecycle APIs, cached recommendations, dashboard-total updates, workout completion notifications, and an idempotent telemetry contribution read model.
+- P7: added a no-dependency check that verifies four distinct Mongo databases and rejects cross-service source imports.
 
 ## In progress
-- P7-P8 database-boundary proof, Compose hardening, and service documentation.
+- P8 architecture/pattern documentation and ADRs.
 
 ## Next steps
-1. Add a check proving service database boundaries; finish Compose and document startup/scaling/resource limits (P7-P8).
+1. Finish architecture/pattern documentation, ADRs, and threats to validity (P8).
 2. Wait for `contract-v1`, then run contract checks and browser validation (P9).
-3. Add architecture, patterns, ADRs, threat-to-validity notes, scale instructions, and final progress; request `micro-ready`.
+3. Finalize progress and request `micro-ready`.
 
 ## Needs from others
 - `contract-v1` is not available locally yet; required before P9 contract validation.
@@ -35,6 +36,7 @@
 - Telemetry service unit suite passes (merged daily totals and dashboard averages).
 - Workout service unit suite passes (recommendation rules, Redis cache TTL, and logged cache-failure fallback).
 - Compose config confirms the five app CPU limits total exactly 1.00, only the gateway publishes a port, and no fixed app container names are used.
+- `node Microservices\scripts\check-databases.js` confirms four distinct service databases and no cross-service source imports.
 - Package manifests parse as JSON; default Prometheus labels verified.
 - `git diff --check` passes.
 
