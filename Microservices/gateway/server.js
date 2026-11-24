@@ -80,6 +80,7 @@ app.use((req, res) => {
     delete headers.connection;
     delete headers["keep-alive"];
     res.writeHead(upstreamResponse.statusCode || 502, headers);
+    res.flushHeaders();
     upstreamResponse.pipe(res);
   });
 

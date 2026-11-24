@@ -9,25 +9,29 @@
 - P6: added workout lifecycle APIs, cached recommendations, dashboard-total updates, idempotent workout completion notifications, and an idempotent telemetry contribution read model.
 - P7: added a no-dependency check that verifies four distinct Mongo databases and rejects cross-service source imports.
 - P8: completed the microservice README, architecture and pattern notes, ADR-002/ADR-005, and threats-to-validity notes. The gateway now has a local smoke check for health, meta, correlation ID, and the shared frontend.
+- P9 runtime: built and started the seven-container stack; exercised API and browser flows through the gateway, including Redis-backed SSE and workout completion.
+- Fixed the gateway SSE proxy to flush upstream response headers immediately; validated notification delivery through the public gateway.
+- Verified goal-service scales to 2 and 3 healthy replicas; 30 gateway requests were served by all three replicas.
 
 ## In progress
-- P9 contract/browser validation is blocked pending `contract-v1` and a running Docker Desktop Linux engine.
+- Formal P9 contract tests are blocked: the `contract-v1` tag and `benchmark/contract/contract.test.js` are not present in the repository.
+- E5/E6 are gated on Sourabha's `phase1-gate` and must run on `e5/micro`.
 
 ## Next steps
-1. Start Docker Desktop's Linux engine and verify the image build and full Compose health checks.
-2. Fetch `contract-v1`; run `BASE_URL=http://localhost:5021 npm run test:contract` and the browser checklist through the gateway.
-3. Test goal-service scaling at 2 and 3 replicas; fix any issues and update test results.
-4. Finalize progress and request `micro-ready` only after P9 passes.
-5. Push `poorna/micro` to origin after the local Git HTTPS helper is repaired/authenticated.
+1. Ask Sourabha to publish `contract-v1` and `benchmark/contract/contract.test.js`; run the official contract suite through `http://localhost:5021`.
+2. After `phase1-gate`, create/use `e5/micro`, implement and test `active_minutes`, and write E5/E6 results as required.
+3. Request `micro-ready` only after the official P1-P9 checks pass.
+4. Publish the follow-up gateway SSE fix and validation notes after Git HTTPS is working.
 
 ## Needs from others
-- `contract-v1` is not available locally yet; required before P9 contract validation.
+- `contract-v1` and the official contract test file are not available; required before formal P9 contract validation.
+- `phase1-gate` is not available yet; required before E5/E6.
 - `hub-v1` was available and its hub interface has been implemented with service-local configuration and metrics.
-- Docker Desktop's Linux engine must be started for image, MongoDB, Redis, and browser validation.
+- The Git HTTPS helper still fails to load `libcurl-4.dll`, blocking publication of any follow-up commit.
 
 ## How to resume
 1. Read this file and `PROMPT_3_Poorna.md`.
-2. Check out `poorna/micro`, fetch/rebase `origin/main`, and verify `git status`.
+2. Check out `poorna/micro` and verify `git status`; the local branch includes a follow-up SSE header fix not yet in the merged PR.
 3. Continue at the first incomplete item in Next steps.
 
 ## Tested
@@ -43,8 +47,13 @@
 - Package manifests parse as JSON; default Prometheus target labels verified.
 - Local gateway smoke check passed for `/health`, `/api/meta`, `X-Request-Id`, and serving `Frontend_Shared/`.
 - `git diff --check` passes.
+- `docker compose ... up --build -d --wait` built the images and all seven containers became healthy.
+- Contract-like flow through the gateway passed: goal validation/create, telemetry ingest/evaluation, SSE notification, notification read/unread, dashboard totals, workout start/live/stop, and exact unknown-route HTML response.
+- Browser flow passed: microservices badge, goal creation, live workout metrics, stop/completion, recommendations, and refreshed dashboard.
+- Scaling to `goal-service=2` and `=3` passed with all services healthy; end-to-end API/SSE flow passed at both sizes.
+- At three replicas, 30 goal-creation requests returned 200 and logs confirmed requests reached all three replicas with correlation IDs.
 
 ## Not tested
-- Docker image build/start, MongoDB/Redis-backed routes, replica scaling, browser flow, and contract tests (`contract-v1` is not present locally; Docker engine unavailable).
-- Official E1-E8 experiments.
-- Push to the collaboration branch; the local Git HTTPS helper currently fails to load `libcurl-4.dll`.
+- Official contract suite (`contract-v1` and `contract.test.js` are missing); manual contract-like flows are not a substitute for that suite.
+- E5/E6, pending `phase1-gate`; official E1-E8 benchmark runs are owned by Siddharth and were not run.
+- Follow-up SSE fix is not yet pushed; Git HTTPS fails to load `libcurl-4.dll`.

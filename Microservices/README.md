@@ -36,13 +36,14 @@ node Microservices\scripts\check-databases.js
 
 ## Scale the goal service
 
-Compose DNS is resolved for each internal request, and the HTTP client does not reuse connections. This lets additional goal replicas receive new requests. After starting the stack, scale only the goal service:
+Compose DNS is resolved for each internal request, and the HTTP client does not reuse connections. This lets additional goal replicas receive new requests. After starting the stack, scale only the goal service to two or three replicas:
 
 ```powershell
 docker compose -f Microservices\docker-compose.micro.yml --profile micro up -d --wait --scale goal-service=2
+docker compose -f Microservices\docker-compose.micro.yml --profile micro up -d --wait --scale goal-service=3
 ```
 
-Redis Pub/Sub (`notifications`) fans notifications out to the notification-service replica that holds the user's SSE connection.
+Both replica counts were tested through the gateway, including goal evaluation and Redis Pub/Sub notification delivery.
 
 ## Resource limits
 
