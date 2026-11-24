@@ -1,7 +1,22 @@
-const GOAL_TYPES = ["steps", "calories", "distance"];
+const GOAL_STRATEGIES = Object.freeze({
+  steps: {
+    field: "totalSteps",
+    unit: "steps",
+    current: (totals) => Number(totals.totalSteps) || 0,
+  },
+  calories: {
+    field: "calories",
+    unit: "calories",
+    current: (totals) => Number(totals.calories) || 0,
+  },
+  distance: {
+    field: "totalDistance",
+    unit: "km",
+    current: (totals) => Number(totals.totalDistance) || 0,
+  },
+});
+const GOAL_TYPES = Object.keys(GOAL_STRATEGIES);
 const GOAL_PERIODS = ["daily", "weekly"];
-const TYPE_FIELD = { steps: "totalSteps", calories: "calories", distance: "totalDistance" };
-const TYPE_UNIT = { steps: "steps", calories: "calories", distance: "km" };
 
 const pad2 = (value) => String(value).padStart(2, "0");
 const capitalize = (value) => String(value || "").charAt(0).toUpperCase() + String(value || "").slice(1);
@@ -70,7 +85,7 @@ function buildGoalView(goal, current) {
     achieved: reached,
     status: reached ? "completed" : "active",
     active: goal.active !== false,
-    unit: TYPE_UNIT[goal.type] || "",
+    unit: GOAL_STRATEGIES[goal.type] ? GOAL_STRATEGIES[goal.type].unit : "",
     startDate: goal.startDate || null,
     endDate: goal.endDate || null,
   };
@@ -86,8 +101,7 @@ function sortGoalViews(views) {
 module.exports = {
   GOAL_TYPES,
   GOAL_PERIODS,
-  TYPE_FIELD,
-  TYPE_UNIT,
+  GOAL_STRATEGIES,
   capitalize,
   periodBounds,
   goalPeriodKey,

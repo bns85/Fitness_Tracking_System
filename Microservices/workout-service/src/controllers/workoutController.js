@@ -192,6 +192,7 @@ async function stopWorkout(req, res) {
         method: "POST",
         body: {
           userId,
+          workoutId: summary.workoutId,
           type: "WORKOUT_COMPLETED",
           title: "🏋️ Workout Completed!",
           message: `Nice work! You trained for ${summary.durationMinutes} minutes and burned ${Math.round(summary.caloriesBurned)} kcal. Check your personalized recommendations.`,

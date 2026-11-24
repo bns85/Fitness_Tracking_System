@@ -1,6 +1,11 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { periodBounds, buildGoalView, sortGoalViews } = require("../src/utils/periodUtils");
+const {
+  periodBounds,
+  buildGoalView,
+  sortGoalViews,
+  GOAL_STRATEGIES,
+} = require("../src/utils/periodUtils");
 
 test("daily bounds cover the local calendar day", () => {
   const bounds = periodBounds("daily", new Date(2024, 0, 3, 14, 30));
@@ -30,4 +35,11 @@ test("goal views report completion and sort active goals first", () => {
   assert.equal(completed.status, "completed");
   assert.equal(completed.percentage, 100);
   assert.deepEqual(sortGoalViews([completed, active]), [active, completed]);
+});
+
+test("goal strategies read their owned telemetry fields and units", () => {
+  assert.equal(GOAL_STRATEGIES.steps.current({ totalSteps: 450 }), 450);
+  assert.equal(GOAL_STRATEGIES.calories.current({ calories: 300 }), 300);
+  assert.equal(GOAL_STRATEGIES.distance.current({ totalDistance: 2.5 }), 2.5);
+  assert.equal(GOAL_STRATEGIES.distance.unit, "km");
 });

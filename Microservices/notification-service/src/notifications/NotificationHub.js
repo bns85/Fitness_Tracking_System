@@ -95,8 +95,16 @@ class RedisHub extends NotificationHub {
     const redisUrl = options.redisUrl || process.env.REDIS_URL;
     if (!redisUrl) throw new Error("REDIS_URL must be configured for RedisHub");
     this.channel = options.channel || "notifications";
-    this.publisher = options.publisher || new Redis(redisUrl);
-    this.subscriber = options.subscriber || new Redis(redisUrl);
+    const redisOptions = {
+      connectTimeout: Number.parseInt(process.env.DOWNSTREAM_TIMEOUT_MS || "1000", 10),
+      commandTimeout: Number.parseInt(process.env.DOWNSTREAM_TIMEOUT_MS || "1000", 10),
+      retryStrategy(attempt) {
+        if (attempt > 3) return null;
+        return Math.min(attempt * 200, 2000);
+      },
+    };
+    this.publisher = options.publisher || new Redis(redisUrl, redisOptions);
+    this.subscriber = options.subscriber || new Redis(redisUrl, redisOptions);
     this.subscriber.on("error", (error) => this.logRedisError(error));
     this.publisher.on("error", (error) => this.logRedisError(error));
     this.subscriber.on("message", (channel, rawMessage) => {

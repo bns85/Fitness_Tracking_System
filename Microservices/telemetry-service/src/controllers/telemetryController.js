@@ -124,10 +124,10 @@ async function updateWorkoutTotals(req, res) {
       workoutId,
       userId,
       date,
-      totalSteps: Number(steps) || 0,
-      calories: Number(caloriesBurned) || 0,
-      totalDistance: Number(distanceKm) || 0,
-      veryActiveMinutes: Number(durationMinutes) || 0,
+      totalSteps: Number.parseInt(steps, 10) || 0,
+      calories: Math.round(Number(caloriesBurned) || 0),
+      totalDistance: Math.round((Number(distanceKm) || 0) * 100) / 100,
+      veryActiveMinutes: Math.round(Number(durationMinutes) || 0),
     };
     try {
       await WorkoutContribution.updateOne(

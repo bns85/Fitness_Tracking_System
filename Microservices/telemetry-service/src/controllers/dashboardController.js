@@ -105,7 +105,6 @@ async function getDashboardSummary(req, res) {
       requestId: req.requestId,
       service: "telemetry",
       variant: "micro",
-      step: "dashboard_read",
       userId,
       msg: error.message,
     }));

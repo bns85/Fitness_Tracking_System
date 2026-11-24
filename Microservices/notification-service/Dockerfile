@@ -1,9 +1,9 @@
 FROM node:20-alpine
 
 WORKDIR /app
-COPY notification-service/package.json ./notification-service/package.json
+COPY notification-service/package*.json ./notification-service/
 WORKDIR /app/notification-service
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 WORKDIR /app
 COPY notification-service/ ./notification-service/
 COPY shared/ ./shared/

@@ -1,9 +1,9 @@
 FROM node:20-alpine
 
 WORKDIR /app
-COPY goal-service/package.json ./goal-service/package.json
+COPY goal-service/package*.json ./goal-service/
 WORKDIR /app/goal-service
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 WORKDIR /app
 COPY goal-service/ ./goal-service/
 COPY shared/ ./shared/

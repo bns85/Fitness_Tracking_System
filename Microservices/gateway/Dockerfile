@@ -1,9 +1,9 @@
 FROM node:20-alpine
 
 WORKDIR /app
-COPY gateway/package.json ./gateway/package.json
+COPY gateway/package*.json ./gateway/
 WORKDIR /app/gateway
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 COPY gateway/ ./
 WORKDIR /app
 COPY shared/ ./shared/

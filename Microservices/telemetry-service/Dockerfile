@@ -1,9 +1,9 @@
 FROM node:20-alpine
 
 WORKDIR /app
-COPY telemetry-service/package.json ./telemetry-service/package.json
+COPY telemetry-service/package*.json ./telemetry-service/
 WORKDIR /app/telemetry-service
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 WORKDIR /app
 COPY telemetry-service/ ./telemetry-service/
 COPY shared/ ./shared/

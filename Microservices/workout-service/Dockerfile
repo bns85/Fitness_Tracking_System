@@ -1,9 +1,9 @@
 FROM node:20-alpine
 
 WORKDIR /app
-COPY workout-service/package.json ./workout-service/package.json
+COPY workout-service/package*.json ./workout-service/
 WORKDIR /app/workout-service
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 WORKDIR /app
 COPY workout-service/ ./workout-service/
 COPY shared/ ./shared/

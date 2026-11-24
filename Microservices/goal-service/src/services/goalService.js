@@ -4,8 +4,7 @@ const { requestJson } = require("../../../shared/httpClient");
 const { journeyFailures } = require("../../../shared/metrics");
 const { logJourneyStep } = require("../../../shared/logger");
 const {
-  TYPE_FIELD,
-  TYPE_UNIT,
+  GOAL_STRATEGIES,
   capitalize,
   periodBounds,
   goalStarted,
@@ -44,7 +43,8 @@ async function getPeriodTotals(userId, period, requestId) {
 
 async function getCurrentForGoal(goal, requestId) {
   const { totals } = await getPeriodTotals(goal.userId, goal.period || "daily", requestId);
-  return Number(totals[TYPE_FIELD[goal.type]]) || 0;
+  const strategy = GOAL_STRATEGIES[goal.type];
+  return strategy ? strategy.current(totals) : 0;
 }
 
 async function getGoalViews(userId, requestId) {
@@ -61,7 +61,8 @@ async function getGoalViews(userId, requestId) {
   ));
   const views = goals.map((goal) => {
     const { totals } = periodData.get(goal.period || "daily");
-    return buildGoalView(goal, Number(totals[TYPE_FIELD[goal.type]]) || 0);
+    const strategy = GOAL_STRATEGIES[goal.type];
+    return buildGoalView(goal, strategy ? strategy.current(totals) : 0);
   });
   return sortGoalViews(views);
 }
@@ -69,7 +70,7 @@ async function getGoalViews(userId, requestId) {
 function notificationBody(payload) {
   const period = payload.period || "daily";
   const type = payload.goalType;
-  const unit = payload.unit || TYPE_UNIT[type] || "";
+  const unit = payload.unit || (GOAL_STRATEGIES[type] && GOAL_STRATEGIES[type].unit) || "";
   return {
     userId: payload.userId,
     type: "GOAL_REACHED",
@@ -95,7 +96,8 @@ async function evaluateGoals(userId, requestId) {
     if (!goalStarted(goal) || isGoalCompletedForPeriod(goal)) continue;
     const period = goal.period || "daily";
     const periodData = period === "weekly" ? weekly : daily;
-    const current = Number(periodData.totals[TYPE_FIELD[goal.type]]) || 0;
+    const strategy = GOAL_STRATEGIES[goal.type];
+    const current = strategy ? strategy.current(periodData.totals) : 0;
     const target = Number(goal.target) || 0;
 
     if (current >= target) {
@@ -121,7 +123,7 @@ async function evaluateGoals(userId, requestId) {
         periodKey: periodData.bounds.key,
         target,
         current,
-        unit: TYPE_UNIT[goal.type] || "",
+        unit: strategy ? strategy.unit : "",
       };
       try {
         await requestJson("http://notification-service:5024/internal/notifications", {

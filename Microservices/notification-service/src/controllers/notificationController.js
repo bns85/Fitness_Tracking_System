@@ -1,6 +1,7 @@
 const Notification = require("../models/Notification");
 const { journeyFailures } = require("../../../shared/metrics");
 const { logJourneyStep } = require("../../../shared/logger");
+const workoutNotificationId = require("../utils/workoutNotificationId");
 
 function failure(req, step, message) {
   journeyFailures.inc({ step });
@@ -28,15 +29,28 @@ function createNotificationController(hub) {
     let notification;
     try {
       const body = req.body || {};
+      if (body.type === "WORKOUT_COMPLETED" && body.workoutId) {
+        const _id = workoutNotificationId(body.userId, body.workoutId);
+        notification = await Notification.findById(_id);
+        if (!notification) {
+          try {
+            notification = await Notification.create({ ...body, _id });
+          } catch (error) {
+            if (error.code !== 11000) throw error;
+            notification = await Notification.findById(_id);
+            if (!notification) throw error;
+          }
+        }
+      }
       if (body.goalId && body.periodKey) {
-        notification = await Notification.findOne({
+        notification = notification || await Notification.findOne({
           userId: body.userId,
           type: "GOAL_REACHED",
           goalId: body.goalId,
           periodKey: body.periodKey,
         });
       }
-      if (!notification) {
+      if (!notification && !(body.type === "WORKOUT_COMPLETED" && body.workoutId)) {
         try {
           notification = await Notification.create(body);
         } catch (error) {
