@@ -1,6 +1,8 @@
 const FitnessData = require("../models/FitnessData");
 const cache = require("../utils/cache");
 const { logJourneyStep } = require("../../../shared/logger");
+const { requestJson } = require("../../../shared/httpClient");
+const { journeyFailures } = require("../../../shared/metrics");
 
 async function invalidateDashboardCache(userId, requestId) {
   try {
@@ -60,6 +62,33 @@ async function recordSteps(req, res) {
       userId,
       msg: "Step telemetry saved",
     });
+
+    try {
+      await requestJson(`http://goal-service:5023/internal/evaluate/${encodeURIComponent(userId)}`, {
+        method: "POST",
+        body: {},
+        from: "telemetry",
+        to: "goal",
+        requestId: req.requestId,
+      });
+      logJourneyStep({
+        requestId: req.requestId,
+        service: "telemetry",
+        step: "goal_evaluated",
+        userId,
+        msg: "Goal evaluation completed",
+      });
+    } catch (error) {
+      journeyFailures.inc({ step: "goal_evaluated" });
+      logJourneyStep({
+        level: "error",
+        requestId: req.requestId,
+        service: "telemetry",
+        step: "goal_evaluated",
+        userId,
+        msg: `Goal evaluation failed: ${error.message}`,
+      });
+    }
 
     return res.json({
       success: true,

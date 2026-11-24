@@ -35,11 +35,10 @@ function sendOnce(url, { method, body, requestId, timeoutMs, from, to }) {
       const chunks = [];
       response.on("data", (chunk) => chunks.push(chunk));
       response.on("end", () => {
-        downstreamCallDuration.observe({
-          from,
-          to,
-          variant: process.env.VARIANT || "micro",
-        }, Number(process.hrtime.bigint() - startedAt) / 1e9);
+        downstreamCallDuration.observe(
+          { from, to },
+          Number(process.hrtime.bigint() - startedAt) / 1e9
+        );
         const text = Buffer.concat(chunks).toString("utf8");
         let responseBody = text;
         try {
@@ -62,11 +61,10 @@ function sendOnce(url, { method, body, requestId, timeoutMs, from, to }) {
 
     request.on("timeout", () => request.destroy(new Error(`Timed out calling ${to}`)));
     request.on("error", (error) => {
-      downstreamCallDuration.observe({
-        from,
-        to,
-        variant: process.env.VARIANT || "micro",
-      }, Number(process.hrtime.bigint() - startedAt) / 1e9);
+      downstreamCallDuration.observe(
+        { from, to },
+        Number(process.hrtime.bigint() - startedAt) / 1e9
+      );
       reject(error);
     });
     if (payload) request.write(payload);

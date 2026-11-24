@@ -83,6 +83,9 @@ app.use((req, res) => {
     upstreamResponse.pipe(res);
   });
 
+  res.on("close", () => {
+    if (!res.writableEnded) upstream.destroy();
+  });
   upstream.on("error", (error) => {
     if (res.headersSent) {
       res.destroy(error);
