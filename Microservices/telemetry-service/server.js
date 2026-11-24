@@ -1,14 +1,35 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const { requestIdMiddleware } = require("../shared/requestId");
-const { register, metricsMiddleware } = require("../shared/metrics");
+const { register, metricsMiddleware, dbOperations } = require("../shared/metrics");
 
 const app = express();
 const PORT = Number.parseInt(process.env.PORT || "5022", 10);
 
+const trackedOperations = [
+  "find", "findOne", "findOneAndUpdate", "findOneAndDelete", "updateOne",
+  "updateMany", "deleteOne", "deleteMany", "count", "countDocuments",
+  "aggregate", "insertMany", "save",
+];
+mongoose.plugin((schema) => {
+  trackedOperations.forEach((op) => {
+    schema.pre(op, function () {
+      dbOperations.inc({
+        op,
+        variant: process.env.VARIANT || "micro",
+        service: process.env.SERVICE_NAME || "telemetry",
+      });
+    });
+  });
+});
+
+const telemetryRoutes = require("./src/routes/telemetry");
+
 app.use(requestIdMiddleware);
 app.use(metricsMiddleware);
 app.use(express.json());
+app.use("/api", telemetryRoutes);
+app.use("/", telemetryRoutes);
 
 app.get("/health", (_req, res) => {
   if (mongoose.connection.readyState !== 1) {

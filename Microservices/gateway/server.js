@@ -50,6 +50,12 @@ app.get("/metrics", async (_req, res) => {
 
 app.use(express.static(FRONTEND_DIR));
 
+app.get("/", (_req, res, next) => {
+  res.sendFile(path.join(FRONTEND_DIR, "index.html"), (error) => {
+    if (error) next(error);
+  });
+});
+
 app.use((req, res) => {
   const targetService = serviceForPath(new URL(req.originalUrl, "http://gateway").pathname);
   if (!targetService) {
@@ -85,12 +91,6 @@ app.use((req, res) => {
     res.status(502).json({ success: false, message: "Upstream service unavailable" });
   });
   req.pipe(upstream);
-});
-
-app.get("/", (_req, res, next) => {
-  res.sendFile(path.join(FRONTEND_DIR, "index.html"), (error) => {
-    if (error) next(error);
-  });
 });
 
 app.listen(PORT, "0.0.0.0", () => {

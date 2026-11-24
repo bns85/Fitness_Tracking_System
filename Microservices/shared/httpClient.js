@@ -75,8 +75,10 @@ function sendOnce(url, { method, body, requestId, timeoutMs, from, to }) {
 }
 
 async function requestJson(url, options) {
-  const retries = Math.max(0, Number.parseInt(process.env.DOWNSTREAM_RETRIES || "1", 10));
-  const timeoutMs = Math.max(1, Number.parseInt(process.env.DOWNSTREAM_TIMEOUT_MS || "1000", 10));
+  const retriesValue = Number.parseInt(process.env.DOWNSTREAM_RETRIES || "1", 10);
+  const timeoutValue = Number.parseInt(process.env.DOWNSTREAM_TIMEOUT_MS || "1000", 10);
+  const retries = Number.isFinite(retriesValue) && retriesValue >= 0 ? retriesValue : 1;
+  const timeoutMs = Number.isFinite(timeoutValue) && timeoutValue > 0 ? timeoutValue : 1000;
   let lastError;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
