@@ -1,8 +1,10 @@
 const FitnessData = require("../models/FitnessData");
 const HeartRate = require("../models/HeartRate");
 const Sleep = require("../models/Sleep");
+const WorkoutContribution = require("../models/WorkoutContribution");
 const cache = require("../utils/cache");
 const { requestJson } = require("../../../shared/httpClient");
+const { mergeActivityDays, averageField } = require("../utils/activityReadModel");
 
 function internalGet(serviceUrl, to, requestId) {
   return requestJson(serviceUrl, {
@@ -14,23 +16,9 @@ function internalGet(serviceUrl, to, requestId) {
 }
 
 async function readTelemetrySummary(userId) {
-  const [latestFitness, activityAverages, heartRateStats, sleepStats] = await Promise.all([
-    FitnessData.findOne({ userId }).sort({ date: -1 }),
-    FitnessData.aggregate([
-      { $match: { userId } },
-      { $sort: { date: -1 } },
-      { $limit: 7 },
-      {
-        $group: {
-          _id: null,
-          avgSteps: { $avg: "$totalSteps" },
-          avgCalories: { $avg: "$calories" },
-          avgDistance: { $avg: "$totalDistance" },
-          avgVeryActiveMinutes: { $avg: "$veryActiveMinutes" },
-          avgSedentaryMinutes: { $avg: "$sedentaryMinutes" },
-        },
-      },
-    ]),
+  const [fitnessDays, workoutDays, heartRateStats, sleepStats] = await Promise.all([
+    FitnessData.find({ userId }).sort({ date: -1 }).limit(7).lean(),
+    WorkoutContribution.find({ userId }).sort({ date: -1 }).limit(7).lean(),
     HeartRate.aggregate([
       { $match: { userId } },
       {
@@ -57,28 +45,29 @@ async function readTelemetrySummary(userId) {
     ]),
   ]);
 
-  const activity = activityAverages[0] || {};
+  const activityDays = mergeActivityDays(fitnessDays, workoutDays);
+  const latestActivityDay = activityDays[0];
   const heartRate = heartRateStats[0] || {};
   const sleep = sleepStats[0] || {};
 
   return {
     userId,
-    latestActivity: latestFitness
+    latestActivity: latestActivityDay
       ? {
-          date: latestFitness.date,
-          steps: latestFitness.totalSteps,
-          distance: Math.round(latestFitness.totalDistance * 100) / 100,
-          calories: latestFitness.calories,
-          veryActiveMinutes: latestFitness.veryActiveMinutes,
-          sedentaryMinutes: latestFitness.sedentaryMinutes,
+          date: latestActivityDay.date,
+          steps: latestActivityDay.totalSteps,
+          distance: Math.round(latestActivityDay.totalDistance * 100) / 100,
+          calories: latestActivityDay.calories,
+          veryActiveMinutes: latestActivityDay.veryActiveMinutes,
+          sedentaryMinutes: latestActivityDay.sedentaryMinutes,
         }
       : null,
     weeklyAverages: {
-      steps: Math.round(activity.avgSteps || 0),
-      calories: Math.round(activity.avgCalories || 0),
-      distance: Math.round((activity.avgDistance || 0) * 100) / 100,
-      activeMinutes: Math.round(activity.avgVeryActiveMinutes || 0),
-      sedentaryMinutes: Math.round(activity.avgSedentaryMinutes || 0),
+      steps: Math.round(averageField(activityDays, "totalSteps")),
+      calories: Math.round(averageField(activityDays, "calories")),
+      distance: Math.round(averageField(activityDays, "totalDistance") * 100) / 100,
+      activeMinutes: Math.round(averageField(activityDays, "veryActiveMinutes")),
+      sedentaryMinutes: Math.round(averageField(activityDays, "sedentaryMinutes")),
     },
     heartRate: {
       avg: Math.round(heartRate.avgHeartRate || 0),

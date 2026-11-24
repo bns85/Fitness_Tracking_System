@@ -1,8 +1,38 @@
 const FitnessData = require("../models/FitnessData");
+const WorkoutContribution = require("../models/WorkoutContribution");
 const cache = require("../utils/cache");
 const { logJourneyStep } = require("../../../shared/logger");
 const { requestJson } = require("../../../shared/httpClient");
 const { journeyFailures } = require("../../../shared/metrics");
+
+async function evaluateGoalsBestEffort(userId, requestId) {
+  try {
+    await requestJson(`http://goal-service:5023/internal/evaluate/${encodeURIComponent(userId)}`, {
+      method: "POST",
+      body: {},
+      from: "telemetry",
+      to: "goal",
+      requestId,
+    });
+    logJourneyStep({
+      requestId,
+      service: "telemetry",
+      step: "goal_evaluated",
+      userId,
+      msg: "Goal evaluation completed",
+    });
+  } catch (error) {
+    journeyFailures.inc({ step: "goal_evaluated" });
+    logJourneyStep({
+      level: "error",
+      requestId,
+      service: "telemetry",
+      step: "goal_evaluated",
+      userId,
+      msg: `Goal evaluation failed: ${error.message}`,
+    });
+  }
+}
 
 async function invalidateDashboardCache(userId, requestId) {
   try {
@@ -63,32 +93,7 @@ async function recordSteps(req, res) {
       msg: "Step telemetry saved",
     });
 
-    try {
-      await requestJson(`http://goal-service:5023/internal/evaluate/${encodeURIComponent(userId)}`, {
-        method: "POST",
-        body: {},
-        from: "telemetry",
-        to: "goal",
-        requestId: req.requestId,
-      });
-      logJourneyStep({
-        requestId: req.requestId,
-        service: "telemetry",
-        step: "goal_evaluated",
-        userId,
-        msg: "Goal evaluation completed",
-      });
-    } catch (error) {
-      journeyFailures.inc({ step: "goal_evaluated" });
-      logJourneyStep({
-        level: "error",
-        requestId: req.requestId,
-        service: "telemetry",
-        step: "goal_evaluated",
-        userId,
-        msg: `Goal evaluation failed: ${error.message}`,
-      });
-    }
+    await evaluateGoalsBestEffort(userId, req.requestId);
 
     return res.json({
       success: true,
@@ -101,25 +106,42 @@ async function recordSteps(req, res) {
 }
 
 async function updateWorkoutTotals(req, res) {
-  const { userId, steps = 0, caloriesBurned = 0, distanceKm = 0, durationMinutes = 0, endTime } = req.body || {};
+  const {
+    workoutId,
+    userId,
+    steps = 0,
+    caloriesBurned = 0,
+    distanceKm = 0,
+    durationMinutes = 0,
+    endTime,
+  } = req.body || {};
+  if (!workoutId) return res.status(400).json({ success: false, message: "workoutId is required" });
   if (!userId) return res.status(400).json({ success: false, message: "userId is required" });
 
   try {
     const date = startOfLocalDay(endTime ? new Date(endTime) : new Date());
-    await FitnessData.findOneAndUpdate(
-      { userId, date },
+    const contribution = {
+      workoutId,
+      userId,
+      date,
+      totalSteps: Number(steps) || 0,
+      calories: Number(caloriesBurned) || 0,
+      totalDistance: Number(distanceKm) || 0,
+      veryActiveMinutes: Number(durationMinutes) || 0,
+    };
+    try {
+      await WorkoutContribution.updateOne(
+      { workoutId },
       {
-        $setOnInsert: { userId, date },
-        $inc: {
-          totalSteps: Number(steps) || 0,
-          calories: Number(caloriesBurned) || 0,
-          totalDistance: Number(distanceKm) || 0,
-          veryActiveMinutes: Number(durationMinutes) || 0,
-        },
+        $setOnInsert: contribution,
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
+      { upsert: true }
+      );
+    } catch (error) {
+      if (error.code !== 11000 || !await WorkoutContribution.exists({ workoutId })) throw error;
+    }
     await invalidateDashboardCache(userId, req.requestId);
+    await evaluateGoalsBestEffort(userId, req.requestId);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -131,4 +153,10 @@ async function invalidateDashboard(req, res) {
   res.status(204).end();
 }
 
-module.exports = { recordSteps, updateWorkoutTotals, invalidateDashboard, startOfLocalDay };
+module.exports = {
+  recordSteps,
+  updateWorkoutTotals,
+  invalidateDashboard,
+  startOfLocalDay,
+  evaluateGoalsBestEffort,
+};
