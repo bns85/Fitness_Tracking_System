@@ -9,6 +9,11 @@ Branch: `sourabha/foundation`
 - A4 Polling moved to legacy profile `polling`: default `docker compose up -d` starts event-app + mongo-event + redis-event + prometheus + grafana only; `--profile polling` starts polling stack (verified: polling /health 200), then stopped again.
 - A5 API contract refreshed against routes/controllers/goal code (`docs: refresh API contract`). Key corrections: goal types are steps/calories/distance (API rejects `workouts`), create/update/complete return RAW goal docs while list/dashboard return goal views, goal 400s carry an `errors[]` array, unknown route is HTML 404 (Express default), no bulk mark-all-read endpoint exists (test must loop PUT `/:id/read`), `/api/meta` documented as agreed shape but currently 404 until task C2.
 - A6 `benchmark/docs/TASK_SPEC.md` and `benchmark/docs/AGREEMENTS.md` committed (`docs: task spec and agreements`).
+- B1 Contract tests referee: `benchmark/contract/contract.test.js` and `benchmark/contract/contract.js` authored (checks health, meta, goal CRUD & duplicate 409, step ingest, notification delivery, dashboard totals, workout lifecycle, and error 404 across any variant). Tag `contract-v1` ready.
+- C1 `GOAL_CPU_MS` & `burnCpu`: added helper in `Event_Driven/Event_Backend/src/utils/burnCpu.js` and integrated inside `src/utils/goalProgress.js` (called exactly once per goal evaluation).
+- C2 `/api/meta`: added endpoint to `Event_Driven/Event_Backend/src/server.js` returning `{ name: "PulseFlow", version: "1.0.0", style: "event-driven", variant: "event" }`.
+- C3 Metric labels: added default labels `variant="event"` and `service="app"` in `Event_Driven/Event_Backend/src/metrics/index.js`.
+- C4 Compare demo page: created `Frontend_Shared/compare.html` with simultaneous 3-variant step firing and real-time millisecond notification latency comparison.
 
 ## In progress
 - (none — Day 0 code work done; waiting on [HUMAN] steps A7–A9)

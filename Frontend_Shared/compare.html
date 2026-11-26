@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PulseFlow | 3-Way Architectural Live Comparison</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .compare-shell { max-width: 1350px; margin: 0 auto; padding: 30px 40px; }
+      .compare-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 24px; margin-bottom: 30px; }
+      .hero-control { background: var(--white); border: 1px solid var(--line); border-radius: 12px; padding: 24px 30px; margin-bottom: 32px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 16px rgba(0,0,0,.03); }
+      .action-btn { background: #202421; color: #fff; border: 0; padding: 14px 28px; border-radius: 8px; font-weight: 700; font-size: 15px; letter-spacing: -0.3px; transition: transform .15s, background .15s; }
+      .action-btn:hover { background: #353b36; transform: translateY(-1px); }
+      .action-btn:disabled { background: #b0b4ad; cursor: not-allowed; transform: none; }
+      .compare-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+      .variant-card { background: var(--white); border: 2px solid var(--line); border-radius: 14px; padding: 26px; position: relative; display: flex; flex-direction: column; transition: border-color .2s, box-shadow .2s; }
+      .variant-card.event { border-top: 6px solid #2563eb; }
+      .variant-card.modular { border-top: 6px solid #0f766e; }
+      .variant-card.micro { border-top: 6px solid #7c3aed; }
+      .variant-card.winner { border-color: #10b981; box-shadow: 0 8px 30px rgba(16, 185, 129, 0.18); }
+      .card-badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 14px; }
+      .badge-event { background: #dbeafe; color: #1e40af; }
+      .badge-modular { background: #ccfbf1; color: #115e59; }
+      .badge-micro { background: #f3e8ff; color: #6b21a8; }
+      .metric-box { background: var(--paper); border-radius: 10px; padding: 18px; margin: 18px 0; text-align: center; }
+      .metric-box .label { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 1px; }
+      .metric-box .number { font: 700 44px var(--display); letter-spacing: -2px; line-height: 1.1; margin: 6px 0; }
+      .metric-box .status-text { font-size: 12px; font-weight: 600; color: #64748b; }
+      .winner-tag { position: absolute; top: -14px; right: 20px; background: #10b981; color: #fff; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+      .details-list { margin-top: auto; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; }
+      .details-list li { margin-bottom: 6px; list-style: none; }
+      .status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+      .pill-idle { background: #f1f5f9; color: #64748b; }
+      .pill-waiting { background: #fef3c7; color: #b45309; }
+      .pill-success { background: #d1fae5; color: #047857; }
+      .pill-error { background: #fee2e2; color: #b91c1c; }
+    </style>
+  </head>
+  <body>
+    <div class="compare-shell">
+      <header class="compare-header">
+        <a class="brand" href="index.html">
+          <span class="brand-mark"><span></span><span></span><span></span></span>
+          <span>pulse<span>flow</span></span>
+        </a>
+        <div style="text-align: right;">
+          <h2 style="margin: 0; font: 600 20px var(--display); letter-spacing: -0.5px;">3-Way Architecture Live Referee</h2>
+          <small style="color: var(--muted);">Direct side-by-side performance comparison</small>
+        </div>
+      </header>
+
+      <section class="hero-control">
+        <div>
+          <h3 style="margin: 0 0 6px 0; font: 600 22px var(--display);">Send 1,500 Steps to All Three Architectures</h3>
+          <p style="margin: 0; color: var(--muted); font-size: 13px;">
+            Generates a brand new user, sets a 1,000-step daily goal, subscribes to SSE, and fires telemetry simultaneously across ports 5001, 5011, and 5021.
+          </p>
+        </div>
+        <button id="trigger-btn" class="action-btn" onclick="runComparison()">
+          🚀 Send 1500 Steps to All Three
+        </button>
+      </section>
+
+      <div class="compare-grid">
+        <!-- Event-Driven Card -->
+        <div class="variant-card event" id="card-event">
+          <span class="card-badge badge-event">Port 5001</span>
+          <h3 style="margin: 0; font: 600 22px var(--display);">Event-Driven</h3>
+          <small style="color: var(--muted); margin-bottom: 12px;">In-process EventEmitter + SSE</small>
+          
+          <div class="metric-box">
+            <div class="label">NOTIFICATION LATENCY</div>
+            <div class="number" id="lat-event">—</div>
+            <div class="status-text" id="status-event">
+              <span class="status-pill pill-idle">Ready</span>
+            </div>
+          </div>
+
+          <ul class="details-list">
+            <li><strong>Ingest:</strong> Acknowledges HTTP 200 before disk save</li>
+            <li><strong>Processing:</strong> Asynchronous consumer queue</li>
+            <li><strong>Best at:</strong> High-burst ingestion shock tolerance</li>
+          </ul>
+        </div>
+
+        <!-- Modular Monolith Card -->
+        <div class="variant-card modular" id="card-modular">
+          <span class="card-badge badge-modular">Port 5011</span>
+          <h3 style="margin: 0; font: 600 22px var(--display);">Modular Monolith</h3>
+          <small style="color: var(--muted); margin-bottom: 12px;">Direct module calls + Facade APIs</small>
+          
+          <div class="metric-box">
+            <div class="label">NOTIFICATION LATENCY</div>
+            <div class="number" id="lat-modular">—</div>
+            <div class="status-text" id="status-modular">
+              <span class="status-pill pill-idle">Ready</span>
+            </div>
+          </div>
+
+          <ul class="details-list">
+            <li><strong>Ingest:</strong> Synchronous write to MongoDB first</li>
+            <li><strong>Processing:</strong> In-memory synchronous function execution</li>
+            <li><strong>Best at:</strong> Lowest delivery latency & resource footprint</li>
+          </ul>
+        </div>
+
+        <!-- Microservices Card -->
+        <div class="variant-card micro" id="card-micro">
+          <span class="card-badge badge-micro">Gateway 5021</span>
+          <h3 style="margin: 0; font: 600 22px var(--display);">Microservices</h3>
+          <small style="color: var(--muted); margin-bottom: 12px;">API Gateway + 4 Services</small>
+          
+          <div class="metric-box">
+            <div class="label">NOTIFICATION LATENCY</div>
+            <div class="number" id="lat-micro">—</div>
+            <div class="status-text" id="status-micro">
+              <span class="status-pill pill-idle">Ready</span>
+            </div>
+          </div>
+
+          <ul class="details-list">
+            <li><strong>Ingest:</strong> HTTP hop Gateway → Telemetry service</li>
+            <li><strong>Processing:</strong> Cascading REST hops (Telemetry→Goal→Notif)</li>
+            <li><strong>Best at:</strong> Selective scaling & fault blast radius isolation</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const VARIANTS = [
+        { key: "event", base: "http://localhost:5001/api", label: "Event-Driven" },
+        { key: "modular", base: "http://localhost:5011/api", label: "Modular Monolith" },
+        { key: "micro", base: "http://localhost:5021/api", label: "Microservices" }
+      ];
+
+      async function runComparison() {
+        const btn = document.getElementById("trigger-btn");
+        btn.disabled = true;
+        btn.textContent = "⏳ Benchmarking in Progress...";
+
+        // Reset UI
+        VARIANTS.forEach(v => {
+          document.getElementById(`card-${v.key}`).classList.remove("winner");
+          const oldTag = document.getElementById(`tag-${v.key}`);
+          if (oldTag) oldTag.remove();
+          document.getElementById(`lat-${v.key}`).textContent = "…";
+          document.getElementById(`status-${v.key}`).innerHTML = '<span class="status-pill pill-waiting">Connecting SSE...</span>';
+        });
+
+        const newUserId = "demo-" + Date.now();
+        const results = {};
+
+        // Execute parallel test for each variant
+        await Promise.all(VARIANTS.map(async (variant) => {
+          try {
+            // 1. Create Goal (1000 steps)
+            await fetch(`${variant.base}/goals`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userId: newUserId, type: "steps", target: 1000, period: "daily" })
+            });
+
+            // 2. Open SSE stream
+            const streamUrl = `${variant.base}/notifications/${newUserId}/stream`;
+            const es = new EventSource(streamUrl);
+
+            let startTime = 0;
+
+            const notificationPromise = new Promise((resolve) => {
+              es.addEventListener("GOAL_REACHED", (e) => {
+                const elapsed = Math.round(performance.now() - startTime);
+                es.close();
+                resolve(elapsed);
+              });
+              // Fallback timeout in case notification fails
+              setTimeout(() => {
+                es.close();
+                resolve(null);
+              }, 8000);
+            });
+
+            // Wait 250ms for SSE stream to open
+            await new Promise(r => setTimeout(r, 250));
+            document.getElementById(`status-${variant.key}`).innerHTML = '<span class="status-pill pill-waiting">Ingesting 1500 Steps...</span>';
+
+            // 3. Fire Steps
+            startTime = performance.now();
+            await fetch(`${variant.base}/telemetry/steps`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userId: newUserId, steps: 1500, calories: 75, distance: 1.1 })
+            });
+
+            // 4. Await Notification
+            const latency = await notificationPromise;
+            results[variant.key] = latency;
+
+            if (latency !== null) {
+              document.getElementById(`lat-${variant.key}`).textContent = `${latency} ms`;
+              document.getElementById(`status-${variant.key}`).innerHTML = '<span class="status-pill pill-success">Delivered!</span>';
+            } else {
+              document.getElementById(`lat-${variant.key}`).textContent = "Timeout";
+              document.getElementById(`status-${variant.key}`).innerHTML = '<span class="status-pill pill-error">No SSE Push</span>';
+            }
+          } catch (err) {
+            console.error(`Error on ${variant.key}:`, err);
+            document.getElementById(`lat-${variant.key}`).textContent = "Error";
+            document.getElementById(`status-${variant.key}`).innerHTML = '<span class="status-pill pill-error">Service Down</span>';
+            results[variant.key] = null;
+          }
+        }));
+
+        // Determine winner
+        let minLat = Infinity;
+        let winnerKey = null;
+        for (const [key, lat] of Object.entries(results)) {
+          if (lat !== null && lat < minLat) {
+            minLat = lat;
+            winnerKey = key;
+          }
+        }
+
+        if (winnerKey) {
+          const card = document.getElementById(`card-${winnerKey}`);
+          card.classList.add("winner");
+          const tag = document.createElement("span");
+          tag.id = `tag-${winnerKey}`;
+          tag.className = "winner-tag";
+          tag.textContent = "🏆 Fastest Delivery";
+          card.appendChild(tag);
+        }
+
+        btn.disabled = false;
+        btn.textContent = "🚀 Send 1500 Steps to All Three";
+      }
+    </script>
+  </body>
+</html>

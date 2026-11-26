@@ -1,5 +1,6 @@
 const Goal = require("../models/Goal");
 const FitnessData = require("../models/FitnessData");
+const burnCpu = require("./burnCpu");
 
 const GOAL_TYPES = ["steps", "calories", "distance"];
 const GOAL_PERIODS = ["daily", "weekly"];
@@ -120,6 +121,12 @@ async function evaluateGoals({ userId, onReached } = {}) {
 
   const goals = await Goal.find(filter).lean();
   if (!goals.length) return [];
+
+  // Consistent compute simulation: called exactly ONCE per goal evaluation
+  const goalCpuMs = Number(process.env.GOAL_CPU_MS || 0);
+  if (goalCpuMs > 0) {
+    burnCpu(goalCpuMs);
+  }
 
   const dailyBounds = periodBounds("daily");
   const weeklyBounds = periodBounds("weekly");

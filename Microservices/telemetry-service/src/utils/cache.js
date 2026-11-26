@@ -1,11 +1,10 @@
 const Redis = require("ioredis");
 
 const redis = new Redis(process.env.REDIS_URL, {
-  connectTimeout: 1000,
-  commandTimeout: 1000,
+  connectTimeout: 10000,
   lazyConnect: false,
   retryStrategy(attempt) {
-    if (attempt > 3) return null;
+    if (attempt > 5) return null;
     return Math.min(attempt * 200, 2000);
   },
 });

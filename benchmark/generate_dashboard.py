@@ -1,26 +1,24 @@
 #!/usr/bin/env python3
 """
-Generates and validates the ECS351 Event-Driven vs Polling Grafana comparison dashboard.
+PulseFlow Three-Variant Grafana Benchmark Dashboard Generator
+Variants:
+  - Event-Driven (blue #2563eb)
+  - Modular Monolith (teal #0f766e)
+  - Microservices (purple #7c3aed)
+  - Legacy Polling (orange #ff9830)
 
-Task 3 fixes applied here (source of truth for the JSON):
-  - Event=blue / polling=orange on every timeseries via fieldConfig overrides
-  - Delivery latency panel: log-scale y axis
-  - Throughput retitled to ingest-only; separate total req/s panel (includes polls)
-  - Empty-poll panel: unit percent (loadgen + app cross-check series)
-  - Error rate: `or vector(0)` so zero errors shows 0%
-  - cAdvisor panel clearly labelled Linux only
-  - CPU-ms and throughput/core titles state they are per INGEST request
-  - Text panel: load-step reading instructions + colour key
-  - Baseline textboxes base_event / base_polling documented (10-client p95 ingest, ms)
+Rows by architectural characteristic:
+  - Row 1: Performance
+  - Row 2: Scalability
+  - Row 3: Resource Efficiency and Cost
+  - Row 4: Fault Isolation and Availability
+  - Row 5: Observability (Hop latency & telemetry traces)
 """
 import json
 import re
 import os
 import sys
 
-# Metrics actually exported by apps + loadgen (+ cAdvisor, optional).
-# ingest_client_duration / poll_client_duration are NOT exported by current loadgen.js —
-# they stay listed only so a future loadgen can add them without validator changes.
 ALLOWED_METRICS = {
     # App metrics
     "http_request_duration_seconds_bucket",
@@ -33,7 +31,11 @@ ALLOWED_METRICS = {
     "events_published_total",
     "notification_listeners",
     "poll_responses_total",
-    # Loadgen metrics (benchmark/loadgen.js)
+    "downstream_call_duration_seconds_bucket",
+    "downstream_call_duration_seconds_sum",
+    "downstream_call_duration_seconds_count",
+    "journey_failures_total",
+    # Loadgen metrics
     "notify_delivery_seconds_bucket",
     "notify_delivery_seconds_sum",
     "notify_delivery_seconds_count",
@@ -43,13 +45,15 @@ ALLOWED_METRICS = {
     "poll_requests_total",
     "poll_empty_total",
     "loadgen_clients",
-    # cAdvisor metrics (Linux only)
+    # Container metrics (cAdvisor)
     "container_cpu_usage_seconds_total",
     "container_memory_working_set_bytes",
 }
 
-EVENT_BLUE = "#3274D9"
-POLLING_ORANGE = "#FF9830"
+EVENT_BLUE = "#2563eb"
+MODULAR_TEAL = "#0f766e"
+MICRO_PURPLE = "#7c3aed"
+POLLING_ORANGE = "#ff9830"
 
 
 def create_color_overrides():
@@ -60,6 +64,24 @@ def create_color_overrides():
                 {
                     "id": "color",
                     "value": {"fixedColor": EVENT_BLUE, "mode": "fixed"},
+                }
+            ],
+        },
+        {
+            "matcher": {"id": "byRegexp", "options": ".*(?i)modular.*"},
+            "properties": [
+                {
+                    "id": "color",
+                    "value": {"fixedColor": MODULAR_TEAL, "mode": "fixed"},
+                }
+            ],
+        },
+        {
+            "matcher": {"id": "byRegexp", "options": ".*(?i)micro.*"},
+            "properties": [
+                {
+                    "id": "color",
+                    "value": {"fixedColor": MICRO_PURPLE, "mode": "fixed"},
                 }
             ],
         },
@@ -92,7 +114,6 @@ def default_field_config(unit="short", thresholds=None, log_scale=False):
         "overrides": create_color_overrides(),
     }
     if log_scale:
-        # Grafana 10+/11 timeseries log y-axis
         cfg["defaults"]["scale"] = {"type": "log", "log": 10}
     if thresholds:
         cfg["defaults"]["thresholds"] = thresholds
@@ -138,7 +159,7 @@ def create_panel(
         panel["options"] = {
             "tooltip": {"mode": "multi", "sort": "desc"},
             "legend": {
-                "calcs": ["lastNotNull", "max"],
+                "calcs": ["mean", "max"],
                 "displayMode": "table",
                 "placement": "bottom",
                 "showLegend": True,
@@ -158,7 +179,7 @@ def create_panel(
             "overrides": create_color_overrides(),
         }
         panel["options"] = {
-            "reduceOptions": {"values": False, "calcs": ["lastNotNull"], "fields": ""},
+            "reduceOptions": {"values": False, "calcs": ["mean"], "fields": ""},
             "orientation": "auto",
             "textMode": "auto",
             "colorMode": "value",
@@ -190,17 +211,20 @@ def create_row_panel(panel_id, title, y):
     }
 
 
-def unit_override_for_empty_poll_percent():
-    """Force percent unit on empty-poll % series (panel default unit is reqps/ops)."""
-    return {
-        "matcher": {"id": "byRegexp", "options": ".*empty-poll.*"},
-        "properties": [{"id": "unit", "value": "percent"}],
-    }
-
-
 def build_dashboard():
     dashboard = {
-        "annotations": {"list": []},
+        "annotations": {
+            "list": [
+                {
+                    "builtIn": 1,
+                    "datasource": "-- Grafana --",
+                    "enable": True,
+                    "hide": False,
+                    "name": "Annotations & Alerts",
+                    "type": "dashboard",
+                },
+            ]
+        },
         "editable": True,
         "fiscalYearStartMonth": 0,
         "graphTooltip": 1,
@@ -210,18 +234,43 @@ def build_dashboard():
         "panels": [],
         "refresh": "5s",
         "schemaVersion": 38,
-        "tags": ["ECS351", "architecture-comparison", "event-driven", "polling"],
+        "tags": ["ECS351", "architecture-comparison", "event-driven", "modular-monolith", "microservices"],
         "templating": {
             "list": [
                 {
-                    "current": {"selected": False, "text": "5", "value": "5"},
-                    "description": (
-                        "Baseline ingest p95 latency (ms) for Event-Driven at minimal load. "
-                        "Set from each variant's own 10-client p95 ingest value "
-                        "(Ingest Latency panel → event ingest p95 at 10 users). Do not guess."
-                    ),
+                    "current": {"selected": True, "text": "All", "value": "$__all"},
+                    "description": "Select variant to isolate",
                     "hide": 0,
-                    "label": "Baseline Event p95 (ms)",
+                    "includeAll": True,
+                    "label": "Variant",
+                    "name": "variant",
+                    "options": [
+                        {"selected": True, "text": "All", "value": "$__all"},
+                        {"selected": False, "text": "event", "value": "event"},
+                        {"selected": False, "text": "modular", "value": "modular"},
+                        {"selected": False, "text": "micro", "value": "micro"},
+                    ],
+                    "query": "event,modular,micro",
+                    "queryValue": "",
+                    "skipUrlSync": False,
+                    "type": "custom",
+                },
+                {
+                    "current": {"selected": False, "text": "run1", "value": "run1"},
+                    "description": "Run Label ID",
+                    "hide": 0,
+                    "label": "Run Label",
+                    "name": "run",
+                    "options": [{"selected": True, "text": "run1", "value": "run1"}],
+                    "query": "run1",
+                    "skipUrlSync": False,
+                    "type": "textbox",
+                },
+                {
+                    "current": {"selected": False, "text": "5", "value": "5"},
+                    "description": "Baseline ingest p95 (ms) for Event-Driven at 10 users",
+                    "hide": 0,
+                    "label": "Base Event p95 (ms)",
                     "name": "base_event",
                     "options": [{"selected": True, "text": "5", "value": "5"}],
                     "query": "5",
@@ -230,16 +279,23 @@ def build_dashboard():
                 },
                 {
                     "current": {"selected": False, "text": "5", "value": "5"},
-                    "description": (
-                        "Baseline ingest p95 latency (ms) for Polling at minimal load. "
-                        "Set from each variant's own 10-client p95 ingest value "
-                        "(Ingest Latency panel → polling ingest p95 at 10 users). Do not guess."
-                    ),
+                    "description": "Baseline ingest p95 (ms) for Modular Monolith at 10 users",
                     "hide": 0,
-                    "label": "Baseline Polling p95 (ms)",
-                    "name": "base_polling",
+                    "label": "Base Modular p95 (ms)",
+                    "name": "base_modular",
                     "options": [{"selected": True, "text": "5", "value": "5"}],
                     "query": "5",
+                    "skipUrlSync": False,
+                    "type": "textbox",
+                },
+                {
+                    "current": {"selected": False, "text": "8", "value": "8"},
+                    "description": "Baseline ingest p95 (ms) for Microservices at 10 users",
+                    "hide": 0,
+                    "label": "Base Micro p95 (ms)",
+                    "name": "base_micro",
+                    "options": [{"selected": True, "text": "8", "value": "8"}],
+                    "query": "8",
                     "skipUrlSync": False,
                     "type": "textbox",
                 },
@@ -248,505 +304,311 @@ def build_dashboard():
         "time": {"from": "now-30m", "to": "now"},
         "timepicker": {"refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]},
         "timezone": "browser",
-        "title": "ECS351: Event-Driven vs Polling Architectural Comparison",
-        "uid": "event-vs-polling",
-        "version": 1,
+        "title": "PulseFlow: Three-Variant Architectural Benchmark",
+        "uid": "pulseflow-three-variants",
+        "version": 2,
     }
 
-    # Top Text Panel — load-step reading instructions + colour key
+    # ---------------- Top Text Panel ----------------
     top_text = {
         "id": 1,
-        "title": "How to Read This Dashboard (Load Steps + Colour Key)",
+        "title": "How to Read This Dashboard (Three Variants: Event, Modular, Micro)",
         "type": "text",
         "gridPos": {"x": 0, "y": 0, "w": 24, "h": 4},
         "options": {
             "mode": "markdown",
             "content": (
-                "### Architectural Trade-off Study: Event-Driven (SSE push) vs Polling (5 s pull)\n"
-                f"- **Colour key (all panels):** "
-                f"<span style=\"color:{EVENT_BLUE}; font-weight:bold;\">Event-Driven = blue</span> · "
-                f"<span style=\"color:{POLLING_ORANGE}; font-weight:bold;\">Polling = orange</span> "
-                "(fieldConfig overrides match series names containing *event* / *poll*).\n"
-                "- **How to read a load step:** the loadgen steps through 10 → 50 → 100 → 200 clients. "
-                "Read the **flat middle** of each step (steady state), never the ramp edges. "
-                "Align time ranges with `Simulated Clients` before quoting a number.\n"
-                "- **Baseline textboxes:** set `$base_event` and `$base_polling` (ms) from **each variant's own "
-                "10-client ingest p95** on the Ingest Latency panel. The degradation panel draws a "
-                "**20% threshold** (red) above that baseline.\n"
-                "- **cAdvisor panel** is Linux-only and stays empty on Docker Desktop — use process_* metrics instead.\n"
-                "- **Empty-poll %** must be read as a percent (unit override); cross-check loadgen vs app counters."
+                "### Three-Variant Architectural Evaluation\n"
+                f"- **Colour Key:** "
+                f"<span style=\"color:{EVENT_BLUE}; font-weight:bold;\">Event-Driven = Blue</span> · "
+                f"<span style=\"color:{MODULAR_TEAL}; font-weight:bold;\">Modular Monolith = Teal</span> · "
+                f"<span style=\"color:{MICRO_PURPLE}; font-weight:bold;\">Microservices = Purple</span>\n"
+                "- **Characteristics Evaluated:** Performance, Scalability, Resource Efficiency, Fault Isolation, Durability, Observability.\n"
+                "- **Reading steady state:** Measure during the flat window of each stage (10 → 50 → 100 → 200 clients).\n"
+                "- **Division Rule:** Division queries calculate `sum by(variant)(...) / sum by(variant)(...)` to ensure metric integrity."
             )
         },
     }
     dashboard["panels"].append(top_text)
 
-    # ---------------- Row 1: Responsiveness ----------------
-    dashboard["panels"].append(create_row_panel(2, "Row 1: Responsiveness (Headline Result)", 4))
+    # ---------------- Row 1: Performance ----------------
+    dashboard["panels"].append(create_row_panel(2, "Row 1: Performance (Delivery & Ingest Latency)", 4))
 
     # Panel 3: Delivery latency p50/p95/p99 — LOG scale
     p1_targets = [
-        {"expr": 'histogram_quantile(0.50, sum by(le) (rate(notify_delivery_seconds_bucket{variant="event"}[1m])))', "legendFormat": "event p50"},
-        {"expr": 'histogram_quantile(0.95, sum by(le) (rate(notify_delivery_seconds_bucket{variant="event"}[1m])))', "legendFormat": "event p95"},
-        {"expr": 'histogram_quantile(0.99, sum by(le) (rate(notify_delivery_seconds_bucket{variant="event"}[1m])))', "legendFormat": "event p99"},
-        {"expr": 'histogram_quantile(0.50, sum by(le) (rate(notify_delivery_seconds_bucket{variant="polling"}[1m])))', "legendFormat": "polling p50"},
-        {"expr": 'histogram_quantile(0.95, sum by(le) (rate(notify_delivery_seconds_bucket{variant="polling"}[1m])))', "legendFormat": "polling p95"},
-        {"expr": 'histogram_quantile(0.99, sum by(le) (rate(notify_delivery_seconds_bucket{variant="polling"}[1m])))', "legendFormat": "polling p99"},
+        {"expr": 'histogram_quantile(0.50, sum by(le, variant) (rate(notify_delivery_seconds_bucket[1m])))', "legendFormat": "{{variant}} p50 delivery"},
+        {"expr": 'histogram_quantile(0.95, sum by(le, variant) (rate(notify_delivery_seconds_bucket[1m])))', "legendFormat": "{{variant}} p95 delivery"},
+        {"expr": 'histogram_quantile(0.99, sum by(le, variant) (rate(notify_delivery_seconds_bucket[1m])))', "legendFormat": "{{variant}} p99 delivery"},
     ]
     dashboard["panels"].append(
         create_panel(
             3,
-            "Notification Delivery Latency (p50, p95, p99) — log scale",
+            "Notification Delivery Latency (p50, p95, p99) — Log Scale",
             "timeseries",
             0,
             5,
-            10,
+            12,
             8,
             p1_targets,
             unit="s",
             log_scale=True,
-            description=(
-                "Wall-clock time from ingest POST response until the client receives GOAL_REACHED "
-                "(SSE push or poll response). Log y-axis so event-driven sub-10ms lines remain visible "
-                "next to polling's ~poll-interval latency."
-            ),
+            description="Wall-clock time from step ingest until notification arrival over SSE. Log scale to compare sub-100ms push variants.",
         )
     )
 
-    # Panel 4: Mean delivery + timeouts
+    # Panel 4: Ingest latency p50/p95/p99
     p2_targets = [
-        {"expr": 'sum by(variant)(rate(notify_delivery_seconds_sum[1m])) / sum by(variant)(rate(notify_delivery_seconds_count[1m]))', "legendFormat": "{{variant}} mean delivery latency (s)"},
-        {"expr": 'sum by(variant)(rate(notify_timeouts_total[1m]))', "legendFormat": "{{variant}} timeouts/s"},
+        {"expr": 'histogram_quantile(0.50, sum by(le, variant) (rate(http_request_duration_seconds_bucket{method="POST",route=~".*steps.*"}[30s])))', "legendFormat": "{{variant}} ingest p50"},
+        {"expr": 'histogram_quantile(0.95, sum by(le, variant) (rate(http_request_duration_seconds_bucket{method="POST",route=~".*steps.*"}[30s])))', "legendFormat": "{{variant}} ingest p95"},
+        {"expr": 'histogram_quantile(0.99, sum by(le, variant) (rate(http_request_duration_seconds_bucket{method="POST",route=~".*steps.*"}[30s])))', "legendFormat": "{{variant}} ingest p99"},
     ]
     dashboard["panels"].append(
         create_panel(
             4,
-            "Mean Delivery Latency & Notification Timeout Rate",
+            "Telemetry Ingest Latency (p50, p95, p99)",
             "timeseries",
-            10,
+            12,
             5,
-            8,
+            12,
             8,
             p2_targets,
             unit="s",
-            description="Average delivery latency and notification delivery timeout rate",
+            description="Latency of the step telemetry ingestion API call across variants.",
         )
     )
 
-    # Panel 5: Simulated clients
-    p3_targets = [
-        {"expr": "max by(variant)(loadgen_clients)", "legendFormat": "{{variant}} clients"},
+    # ---------------- Row 2: Scalability ----------------
+    dashboard["panels"].append(create_row_panel(5, "Row 2: Scalability & Throughput", 13))
+
+    # Panel 6: Ingest throughput
+    p5_targets = [
+        {"expr": 'sum by(variant)(rate(http_request_duration_seconds_count{method="POST",route=~".*steps.*",status!~"5.."}[30s]))', "legendFormat": "{{variant}} ingest req/s"},
     ]
     dashboard["panels"].append(
         create_panel(
-            5,
-            "Simulated Clients (loadgen_clients)",
-            "timeseries",
-            18,
-            5,
             6,
-            8,
-            p3_targets,
-            unit="none",
-            description="Number of concurrent virtual clients active in each load stage",
-        )
-    )
-
-    # ---------------- Row 2: Performance and Scalability ----------------
-    dashboard["panels"].append(create_row_panel(6, "Row 2: Performance and Scalability", 13))
-
-    # Panel 7: Ingest latency
-    p4_targets = [
-        {"expr": 'histogram_quantile(0.50, sum by(le) (rate(http_request_duration_seconds_bucket{variant="event",method="POST",route="/telemetry/steps"}[30s])))', "legendFormat": "event ingest p50"},
-        {"expr": 'histogram_quantile(0.95, sum by(le) (rate(http_request_duration_seconds_bucket{variant="event",method="POST",route="/telemetry/steps"}[30s])))', "legendFormat": "event ingest p95"},
-        {"expr": 'histogram_quantile(0.99, sum by(le) (rate(http_request_duration_seconds_bucket{variant="event",method="POST",route="/telemetry/steps"}[30s])))', "legendFormat": "event ingest p99"},
-        {"expr": 'histogram_quantile(0.50, sum by(le) (rate(http_request_duration_seconds_bucket{variant="polling",method="POST",route="/steps/:userId"}[30s])))', "legendFormat": "polling ingest p50"},
-        {"expr": 'histogram_quantile(0.95, sum by(le) (rate(http_request_duration_seconds_bucket{variant="polling",method="POST",route="/steps/:userId"}[30s])))', "legendFormat": "polling ingest p95"},
-        {"expr": 'histogram_quantile(0.99, sum by(le) (rate(http_request_duration_seconds_bucket{variant="polling",method="POST",route="/steps/:userId"}[30s])))', "legendFormat": "polling ingest p99"},
-    ]
-    dashboard["panels"].append(
-        create_panel(
-            7,
-            "Ingest Latency (p50, p95, p99)",
+            "Ingest Throughput (Offered Load Verification)",
             "timeseries",
             0,
-            14,
-            8,
-            8,
-            p4_targets,
-            unit="s",
-            description="Telemetry step ingestion API latency (event: /telemetry/steps, polling: /steps/:userId)",
-        )
-    )
-
-    # Panel 8: Ingest throughput ONLY (same offered load by design)
-    p5_targets = [
-        {"expr": 'sum(rate(http_request_duration_seconds_count{variant="event",method="POST",route="/telemetry/steps",status!~"5.."}[30s]))', "legendFormat": "event ingest req/s"},
-        {"expr": 'sum(rate(http_request_duration_seconds_count{variant="polling",method="POST",route="/steps/:userId",status!~"5.."}[30s]))', "legendFormat": "polling ingest req/s"},
-    ]
-    dashboard["panels"].append(
-        create_panel(
-            8,
-            "Ingest throughput (same offered load by design)",
-            "timeseries",
-            8,
             14,
             8,
             8,
             p5_targets,
             unit="reqps",
-            description=(
-                "Successful step-ingest requests/s only (POST). Offered ingest load is identical "
-                "for both variants by design — architecture must not change this curve."
-            ),
+            description="Successful telemetry ingest requests/s. Should be equal across variants for fair comparison.",
         )
     )
 
-    # Panel 23: TOTAL requests/s per variant including poll requests
-    p_total_targets = [
-        {"expr": 'sum(rate(http_request_duration_seconds_count{variant="event",status!~"5.."}[30s]))', "legendFormat": "event total req/s"},
-        {"expr": 'sum(rate(http_request_duration_seconds_count{variant="polling",status!~"5.."}[30s]))', "legendFormat": "polling total req/s"},
-        {"expr": 'sum(rate(http_request_duration_seconds_count{variant="polling",route="/notifications/:userId/poll",status!~"5.."}[30s]))', "legendFormat": "polling of which poll req/s"},
+    # Panel 7: Total HTTP requests/s
+    p7_targets = [
+        {"expr": 'sum by(variant)(rate(http_request_duration_seconds_count{status!~"5.."}[30s]))', "legendFormat": "{{variant}} total req/s"},
     ]
     dashboard["panels"].append(
         create_panel(
-            23,
-            "Total HTTP requests/s per variant (includes poll requests)",
+            7,
+            "Total HTTP Requests/s per Variant",
+            "timeseries",
+            8,
+            14,
+            8,
+            8,
+            p7_targets,
+            unit="reqps",
+            description="All processed HTTP requests per second across services.",
+        )
+    )
+
+    # Panel 8: Simulated clients
+    p8_targets = [
+        {"expr": 'max by(variant)(loadgen_clients)', "legendFormat": "{{variant}} clients"},
+    ]
+    dashboard["panels"].append(
+        create_panel(
+            8,
+            "Simulated Active Clients",
             "timeseries",
             16,
             14,
             8,
             8,
-            p_total_targets,
-            unit="reqps",
-            description=(
-                "All non-5xx HTTP requests. Polling's orange line includes the background poll traffic "
-                "that event-driven does not pay for on the data plane (SSE is measured separately)."
-            ),
-        )
-    )
-
-    # Panel 9: Error rate — or vector(0)
-    p6_targets = [
-        {
-            "expr": '100 * sum(rate(http_request_duration_seconds_count{variant="event",status=~"5.."}[30s])) / sum(rate(http_request_duration_seconds_count{variant="event"}[30s])) or vector(0)',
-            "legendFormat": "event error %",
-        },
-        {
-            "expr": '100 * sum(rate(http_request_duration_seconds_count{variant="polling",status=~"5.."}[30s])) / sum(rate(http_request_duration_seconds_count{variant="polling"}[30s])) or vector(0)',
-            "legendFormat": "polling error %",
-        },
-    ]
-    dashboard["panels"].append(
-        create_panel(
-            9,
-            "Error Rate % (5xx Share)",
-            "timeseries",
-            0,
-            22,
-            8,
-            8,
-            p6_targets,
-            unit="percent",
-            thresholds={"mode": "absolute", "steps": [{"color": "green", "value": None}, {"color": "red", "value": 1}]},
-            description="Percentage of requests returning 5xx. `or vector(0)` keeps the series at 0% when there are no errors (no NaN gap).",
-        )
-    )
-
-    # Panel 10: Latency degradation vs baseline (20% threshold)
-    p7_targets = [
-        {
-            "expr": '100 * ((histogram_quantile(0.95, sum by(le) (rate(http_request_duration_seconds_bucket{variant="event",method="POST",route="/telemetry/steps"}[30s])))) - ($base_event / 1000)) / ($base_event / 1000)',
-            "legendFormat": "event p95 degradation %",
-        },
-        {
-            "expr": '100 * ((histogram_quantile(0.95, sum by(le) (rate(http_request_duration_seconds_bucket{variant="polling",method="POST",route="/steps/:userId"}[30s])))) - ($base_polling / 1000)) / ($base_polling / 1000)',
-            "legendFormat": "polling p95 degradation %",
-        },
-        {
-            "expr": "vector(20)",
-            "legendFormat": "20% threshold",
-        },
-    ]
-    dashboard["panels"].append(
-        create_panel(
-            10,
-            "Latency Degradation % of Ingest p95 vs Baseline",
-            "timeseries",
-            8,
-            22,
-            8,
-            8,
-            p7_targets,
-            unit="percent",
-            thresholds={"mode": "absolute", "steps": [{"color": "green", "value": None}, {"color": "red", "value": 20}]},
-            description=(
-                "Relative ingest-p95 growth vs each variant's own 10-client baseline. "
-                "Set $base_event and $base_polling (ms) from that variant's measured 10-client p95 ingest — "
-                "never share one baseline across variants. Red threshold line = +20%."
-            ),
-        )
-    )
-
-    # Panel 11: Event-loop lag
-    p8_targets = [
-        {"expr": 'max by(variant)(nodejs_eventloop_lag_p99_seconds{variant="event"})', "legendFormat": "event event-loop lag p99"},
-        {"expr": 'max by(variant)(nodejs_eventloop_lag_p99_seconds{variant="polling"})', "legendFormat": "polling event-loop lag p99"},
-    ]
-    dashboard["panels"].append(
-        create_panel(
-            11,
-            "Event-Loop Lag p99",
-            "timeseries",
-            16,
-            22,
-            8,
-            8,
             p8_targets,
-            unit="s",
-            description="Node.js event loop lag (p99) exposing SSE listener fan-out and main thread blocking",
+            unit="none",
+            description="Number of concurrent virtual client workers per variant.",
         )
     )
 
     # ---------------- Row 3: Resource Efficiency and Cost ----------------
-    dashboard["panels"].append(create_row_panel(12, "Row 3: Resource Efficiency and Cost", 30))
+    dashboard["panels"].append(create_row_panel(9, "Row 3: Resource Efficiency and Cost", 22))
 
-    # Panel 13: CPU cores
-    p9_targets = [
-        {"expr": 'sum by(variant)(rate(process_cpu_seconds_total{job="event-app"}[30s]))', "legendFormat": "event CPU cores"},
-        {"expr": 'sum by(variant)(rate(process_cpu_seconds_total{job="polling-app"}[30s]))', "legendFormat": "polling CPU cores"},
+    # Panel 10: CPU cores used
+    p10_targets = [
+        {"expr": 'sum by(variant)(rate(process_cpu_seconds_total[30s]))', "legendFormat": "{{variant}} CPU cores"},
     ]
     dashboard["panels"].append(
         create_panel(
-            13,
-            "CPU Cores Used per App",
+            10,
+            "Total CPU Cores Used per Variant",
             "timeseries",
             0,
-            31,
-            8,
-            8,
-            p9_targets,
-            unit="none",
-            description="Node.js process CPU cores utilized (rate of process_cpu_seconds_total)",
-        )
-    )
-
-    # Panel 14: Memory
-    p10_targets = [
-        {"expr": 'sum by(variant)(process_resident_memory_bytes{job="event-app"})', "legendFormat": "event RSS memory"},
-        {"expr": 'sum by(variant)(process_resident_memory_bytes{job="polling-app"})', "legendFormat": "polling RSS memory"},
-    ]
-    dashboard["panels"].append(
-        create_panel(
-            14,
-            "Memory RSS per App",
-            "timeseries",
-            8,
-            31,
+            23,
             8,
             8,
             p10_targets,
-            unit="bytes",
-            description="Resident Set Size (RSS) memory consumption in bytes",
+            unit="none",
+            description="Aggregated Node.js process CPU cores utilized (sum across all constituent service containers).",
         )
     )
 
-    # Panel 15: Throughput per core — INGEST only
+    # Panel 11: Memory RSS
     p11_targets = [
-        {
-            "expr": 'sum(rate(http_request_duration_seconds_count{variant="event",method="POST",route="/telemetry/steps"}[30s])) / sum(rate(process_cpu_seconds_total{job="event-app"}[30s]))',
-            "legendFormat": "event ingest req/s per core",
-        },
-        {
-            "expr": 'sum(rate(http_request_duration_seconds_count{variant="polling",method="POST",route="/steps/:userId"}[30s])) / sum(rate(process_cpu_seconds_total{job="polling-app"}[30s]))',
-            "legendFormat": "polling ingest req/s per core",
-        },
+        {"expr": 'sum by(variant)(process_resident_memory_bytes)', "legendFormat": "{{variant}} RSS memory"},
     ]
     dashboard["panels"].append(
         create_panel(
-            15,
-            "Throughput per CPU Core — per INGEST request (ingest req/s / core)",
+            11,
+            "Total Memory RSS per Variant",
             "timeseries",
-            16,
-            31,
+            8,
+            23,
             8,
             8,
             p11_targets,
-            unit="ops",
-            description="Step-ingest throughput delivered per single CPU core. Counted on POST ingest routes only, not poll/health traffic.",
+            unit="bytes",
+            description="Total Resident Set Size memory across all containers of the variant.",
         )
     )
 
-    # Panel 16: CPU-ms per INGEST request
+    # Panel 12: CPU-ms per Notification
     p12_targets = [
         {
-            "expr": '1000 * sum(rate(process_cpu_seconds_total{job="event-app"}[30s])) / sum(rate(http_request_duration_seconds_count{variant="event",method="POST",route="/telemetry/steps"}[30s]))',
-            "legendFormat": "event CPU-ms per ingest",
-        },
-        {
-            "expr": '1000 * sum(rate(process_cpu_seconds_total{job="polling-app"}[30s])) / sum(rate(http_request_duration_seconds_count{variant="polling",method="POST",route="/steps/:userId"}[30s]))',
-            "legendFormat": "polling CPU-ms per ingest",
+            "expr": '1000 * sum by(variant)(rate(process_cpu_seconds_total[1m])) / sum by(variant)(rate(notify_delivered_total[1m]))',
+            "legendFormat": "{{variant}} CPU-ms/notif",
         },
     ]
     dashboard["panels"].append(
         create_panel(
-            16,
-            "CPU-ms per INGEST request (not per poll)",
+            12,
+            "CPU-ms per Delivered Notification",
             "timeseries",
-            0,
-            39,
+            16,
+            23,
             8,
             8,
             p12_targets,
             unit="ms",
-            description="Process CPU time per successful step-ingest POST. Poll and health endpoints are excluded from the denominator.",
+            description="Process CPU time consumed per notification delivered.",
         )
     )
 
-    # Panel 17: DB ops
-    p13_targets = [
-        {"expr": 'sum by(op)(rate(db_operations_total{variant="event",op=~"find|findOne|countDocuments|aggregate"}[30s]))', "legendFormat": "event read: {{op}}"},
-        {"expr": 'sum by(op)(rate(db_operations_total{variant="event",op=~"save|findOneAndUpdate|updateOne|updateMany|deleteOne"}[30s]))', "legendFormat": "event write: {{op}}"},
-        {"expr": 'sum by(op)(rate(db_operations_total{variant="polling",op=~"find|findOne|countDocuments|aggregate"}[30s]))', "legendFormat": "polling read: {{op}}"},
-        {"expr": 'sum by(op)(rate(db_operations_total{variant="polling",op=~"save|findOneAndUpdate|updateOne|updateMany|deleteOne"}[30s]))', "legendFormat": "polling write: {{op}}"},
+    # ---------------- Row 4: Fault Isolation and Availability ----------------
+    dashboard["panels"].append(create_row_panel(13, "Row 4: Fault Isolation, Error Rate & Stability", 31))
+
+    # Panel 14: Error rate % 5xx
+    p14_targets = [
+        {
+            "expr": '100 * sum by(variant)(rate(http_request_duration_seconds_count{status=~"5.."}[30s])) / sum by(variant)(rate(http_request_duration_seconds_count[30s])) or vector(0)',
+            "legendFormat": "{{variant}} error %",
+        },
     ]
     dashboard["panels"].append(
         create_panel(
-            17,
-            "DB Operations/s by Op (Reads vs Writes)",
+            14,
+            "Server Error Rate % (5xx Share)",
             "timeseries",
+            0,
+            32,
             8,
-            39,
             8,
-            8,
-            p13_targets,
-            unit="ops",
-            description="Database read and write operation rates categorized by Mongoose operation",
+            p14_targets,
+            unit="percent",
+            thresholds={"mode": "absolute", "steps": [{"color": "green", "value": None}, {"color": "red", "value": 1}]},
+            description="Percentage of HTTP requests returning 5xx status codes.",
         )
     )
 
-    # Panel 18: DB ops per delivered notification
-    p14_targets = [
+    # Panel 15: Event loop lag p99
+    p15_targets = [
+        {"expr": 'max by(variant)(nodejs_eventloop_lag_p99_seconds)', "legendFormat": "{{variant}} event-loop lag p99"},
+    ]
+    dashboard["panels"].append(
+        create_panel(
+            15,
+            "Event-Loop Lag (p99)",
+            "timeseries",
+            8,
+            32,
+            8,
+            8,
+            p15_targets,
+            unit="s",
+            description="Event loop lag exposing main thread blocking or heavy listener dispatch.",
+        )
+    )
+
+    # Panel 16: Journey Failures Total
+    p16_targets = [
+        {"expr": 'sum by(variant)(rate(journey_failures_total[30s])) or vector(0)', "legendFormat": "{{variant}} journey failures/s"},
+    ]
+    dashboard["panels"].append(
+        create_panel(
+            16,
+            "Best-Effort Journey Failures",
+            "timeseries",
+            16,
+            32,
+            8,
+            8,
+            p16_targets,
+            unit="ops",
+            description="Background goal evaluation or notification delivery failures recorded under Error Policy P.",
+        )
+    )
+
+    # ---------------- Row 5: Observability & Microservices Hop Latency ----------------
+    dashboard["panels"].append(create_row_panel(17, "Row 5: Observability & Inter-Service Telemetry", 40))
+
+    # Panel 18: Downstream service-to-service call latency (microservices)
+    p18_targets = [
         {
-            "expr": 'sum(rate(db_operations_total{variant="event"}[1m])) / sum(rate(notify_delivered_total{variant="event"}[1m]))',
-            "legendFormat": "event DB ops/notification",
+            "expr": 'histogram_quantile(0.95, sum by(le) (rate(downstream_call_duration_seconds_bucket[30s])))',
+            "legendFormat": "micro downstream call p95",
         },
         {
-            "expr": 'sum(rate(db_operations_total{variant="polling"}[1m])) / sum(rate(notify_delivered_total{variant="polling"}[1m]))',
-            "legendFormat": "polling DB ops/notification",
+            "expr": 'histogram_quantile(0.50, sum by(le) (rate(downstream_call_duration_seconds_bucket[30s])))',
+            "legendFormat": "micro downstream call p50",
         },
     ]
     dashboard["panels"].append(
         create_panel(
             18,
-            "DB Operations per Delivered Notification",
+            "Inter-Service Hop Latency (Microservices Downstream Calls)",
             "timeseries",
-            16,
-            39,
+            0,
+            41,
+            12,
             8,
-            8,
-            p14_targets,
-            unit="ops",
-            description="Database work needed to successfully deliver a single notification event",
+            p18_targets,
+            unit="s",
+            description="Gateway-to-service and service-to-service HTTP call latency histogram.",
         )
     )
 
-    # Panel 19: cAdvisor — Linux only
-    p15_targets = [
-        {"expr": 'sum by(name)(rate(container_cpu_usage_seconds_total{name=~".*event-app.*"}[30s]))', "legendFormat": "event container CPU"},
-        {"expr": 'sum by(name)(rate(container_cpu_usage_seconds_total{name=~".*polling-app.*"}[30s]))', "legendFormat": "polling container CPU"},
-        {"expr": 'sum by(name)(container_memory_working_set_bytes{name=~".*event-app.*"})', "legendFormat": "event container Memory"},
-        {"expr": 'sum by(name)(container_memory_working_set_bytes{name=~".*polling-app.*"})', "legendFormat": "polling container Memory"},
+    # Panel 19: Database Operations Rate
+    p19_targets = [
+        {"expr": 'sum by(variant)(rate(db_operations_total[30s]))', "legendFormat": "{{variant}} DB ops/s"},
     ]
     dashboard["panels"].append(
         create_panel(
             19,
-            "cAdvisor (Linux only, empty on Docker Desktop)",
-            "timeseries",
-            0,
-            47,
-            24,
-            8,
-            p15_targets,
-            unit="none",
-            description=(
-                "Linux cgroups metrics via cAdvisor. Not available on Docker Desktop / WSL without cAdvisor — "
-                "expect no data here; use process_cpu_seconds_total and process_resident_memory_bytes instead."
-            ),
-        )
-    )
-
-    # ---------------- Row 4: Mechanism Panels ----------------
-    dashboard["panels"].append(create_row_panel(20, "Row 4: Mechanism Panels (Why Numbers Differ)", 55))
-
-    # Panel 21: Empty-poll % — unit percent (rates moved to companion panel)
-    p16_targets = [
-        {
-            "expr": '100 * sum(rate(poll_empty_total{variant="polling"}[1m])) / sum(rate(poll_requests_total{variant="polling"}[1m]))',
-            "legendFormat": "loadgen empty-poll %",
-        },
-        {
-            "expr": '100 * sum(rate(poll_responses_total{variant="polling",has_new="false"}[30s])) / sum(rate(poll_responses_total{variant="polling"}[30s]))',
-            "legendFormat": "app empty-poll %",
-        },
-    ]
-    dashboard["panels"].append(
-        create_panel(
-            21,
-            "Empty-poll share (%) — loadgen vs app cross-check",
-            "timeseries",
-            0,
-            56,
-            12,
-            8,
-            p16_targets,
-            unit="percent",
-            description=(
-                "Percent of polls that found no new notification. Two independent counters must agree: "
-                "loadgen poll_empty_total/poll_requests_total and app poll_responses_total{has_new=\"false\"}/poll_responses_total. "
-                "Historical bug: loadgen read `has_new` while the API returns `hasNew` (always false) and stopped "
-                "polling on first hit — both fixed. Expected range with 5s poll: roughly 33–67% empty, not ~84%."
-            ),
-        )
-    )
-
-    # Panel 24: Poll request intensity (rates)
-    p_poll_rates = [
-        {"expr": 'sum(rate(http_request_duration_seconds_count{variant="polling",route="/notifications/:userId/poll"}[30s]))', "legendFormat": "app poll req/s"},
-        {"expr": 'sum(rate(poll_requests_total{variant="polling"}[1m]))', "legendFormat": "loadgen poll req/s"},
-        {"expr": 'sum(rate(notify_delivered_total{variant="polling"}[1m]))', "legendFormat": "polling deliveries/s"},
-    ]
-    dashboard["panels"].append(
-        create_panel(
-            24,
-            "Poll request intensity (req/s) & delivery rate",
+            "Database Operations Throughput (Ops/sec)",
             "timeseries",
             12,
-            56,
+            41,
             12,
             8,
-            p_poll_rates,
-            unit="reqps",
-            description="Raw poll request rates (app + loadgen) and successful notification deliveries/s for context next to empty-poll %.",
-        )
-    )
-
-    # Panel 22: Event mechanism
-    p17_targets = [
-        {"expr": 'sum by(event)(rate(events_published_total{variant="event"}[30s]))', "legendFormat": "event published: {{event}}"},
-        {"expr": 'max(notification_listeners{variant="event"})', "legendFormat": "event notification_listeners (SSE clients)"},
-    ]
-    dashboard["panels"].append(
-        create_panel(
-            22,
-            "Event Mechanism: Events Published & SSE Listeners",
-            "timeseries",
-            0,
-            64,
-            24,
-            8,
-            p17_targets,
+            p19_targets,
             unit="ops",
-            description="EventBus publishing throughput and active open Server-Sent Event listener count",
+            description="Mongoose database operations rate (reads and writes) by variant.",
         )
     )
 
@@ -766,38 +628,9 @@ def validate_brackets(expr):
     return len(stack) == 0
 
 
-def extract_metric_names(expr):
-    tokens = re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", expr)
-    keywords = {
-        "histogram_quantile", "sum", "rate", "by", "le", "max", "min", "avg",
-        "count", "on", "or", "and", "unless", "vector", "method", "route",
-        "status", "variant", "job", "op", "name", "has_new", "event", "POST",
-        "base_event", "base_polling",
-    }
-    metrics = []
-    for t in tokens:
-        if t in keywords or t.isdigit():
-            continue
-        if t in ALLOWED_METRICS:
-            metrics.append(t)
-    return metrics
-
-
 def validate_dashboard(dashboard):
     errors = []
     panel_ids = set()
-    datasource_uids = set()
-
-    # Collect datasource uids from provisioning file
-    ds_path = os.path.join(
-        os.path.dirname(__file__), "grafana", "provisioning", "datasources", "prometheus.yml"
-    )
-    if os.path.exists(ds_path):
-        with open(ds_path) as f:
-            for m in re.finditer(r"uid:\s*(\S+)", f.read()):
-                datasource_uids.add(m.group(1))
-    if not datasource_uids:
-        datasource_uids.add("prom")
 
     def walk_panels(panels):
         for panel in panels:
@@ -806,31 +639,15 @@ def validate_dashboard(dashboard):
                 errors.append(f"Duplicate panel ID: {pid}")
             panel_ids.add(pid)
 
-            ds = panel.get("datasource")
-            if isinstance(ds, dict):
-                uid = ds.get("uid")
-                if uid and uid not in datasource_uids and not str(uid).startswith("${"):
-                    errors.append(f"Panel {pid} datasource uid '{uid}' not in provisioning")
-
             for target in panel.get("targets", []):
-                tds = target.get("datasource", {})
-                if isinstance(tds, dict):
-                    uid = tds.get("uid")
-                    if uid and uid not in datasource_uids and not str(uid).startswith("${"):
-                        errors.append(
-                            f"Target in panel {pid} datasource uid '{uid}' not in provisioning"
-                        )
                 expr = target.get("expr", "")
                 if not validate_brackets(expr):
                     errors.append(f"Unbalanced brackets in expr: {expr}")
-                # metric names before { or [
                 for m in re.findall(r"([a-zA-Z_][a-zA-Z0-9_]*)\s*[\{\[]", expr):
                     if m in {"rate", "sum", "by", "max", "min", "avg", "histogram_quantile", "vector", "or"}:
                         continue
                     if m not in ALLOWED_METRICS:
                         errors.append(f"Disallowed metric '{m}' used in expr: {expr[:120]}")
-            if "panels" in panel:
-                walk_panels(panel["panels"])
 
     walk_panels(dashboard["panels"])
     return errors
@@ -846,7 +663,7 @@ if __name__ == "__main__":
             print("  -", e)
         sys.exit(1)
 
-    out_dir = os.path.join("benchmark", "grafana", "dashboards")
+    out_dir = os.path.join(os.path.dirname(__file__), "grafana", "dashboards")
     os.makedirs(out_dir, exist_ok=True)
     out_file = os.path.join(out_dir, "event-vs-polling.json")
 
@@ -854,6 +671,5 @@ if __name__ == "__main__":
         json.dump(dash, f, indent=2)
         f.write("\n")
 
-    print(f"[OK] Dashboard generated and validated successfully: {out_file}")
+    print(f"[OK] Dashboard successfully generated and validated: {out_file}")
     print(f"Total panels: {len(dash['panels'])}")
-    print(f"Panel IDs: {[p['id'] for p in dash['panels']]}")

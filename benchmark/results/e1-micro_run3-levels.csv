@@ -1,0 +1,9 @@
+exp,run_label,variant,users,hold_s,warmup_s,poll_ms,delivery_p50_s,delivery_p95_s,delivery_p99_s,delivery_mean_s,delivery_n,delivery_timeouts,ingest_p50_s,ingest_p95_s,ingest_p99_s,ingest_mean_s,ingest_n,ingest_errors,notify_delivered,poll_requests,poll_empty,poll_empty_share,app_cpu_delta_s,app_rss_bytes,eventloop_lag_p99_s,workers,delivery_min_s,delivery_max_s,ingest_per_s,notifications_per_s,poll_requests_per_s,cycle_s,think_min_s,think_max_s,timeout_ms,loadgen_version,replicas,containers,total_cpu_limit
+e1,micro_run3,micro,10,120,20,5000,,,,,0,77,,,,,0,80,0,,,,,,,10,,,0,0,,15,1,6,8000,v3-three-variant,1,5,1.0
+e1,micro_run3,micro,50,120,20,5000,,,,,0,375,,,,,0,398,0,,,,,,,50,,,0,0,,15,1,6,8000,v3-three-variant,1,5,1.0
+e1,micro_run3,micro,100,120,20,5000,,,,,0,739,,,,,0,794,0,,,,,,,100,,,0,0,,15,1,6,8000,v3-three-variant,1,5,1.0
+e1,micro_run3,micro,200,120,20,5000,,,,,0,1483,,,,,0,1599,0,,,,,,,200,,,0,0,,15,1,6,8000,v3-three-variant,1,5,1.0
+e1,micro_run3,micro,10,120,20,5000,0.063,0.218,0.617,0.0936,80,0,0.066,0.251,0.716,0.10505,80,0,80,,,,2.659,66945024,0.039617,10,0.046,0.617,0.6667,0.6667,,15,1,6,8000,v3-three-variant,1,5,1.0
+e1,micro_run3,micro,50,120,20,5000,0.157,0.792,1.305,0.260179,402,0,0.179,0.858,1.349,0.280838,402,0,402,,,,6.9169,69779456,0.100532,50,0.045,1.828,3.35,3.35,,15,1,6,8000,v3-three-variant,1,5,1.0
+e1,micro_run3,micro,100,120,20,5000,6.976,7.983,8.009,6.258513,154,436,2.318,3.263,3.957,2.453513,622,0,154,,,,9.0311,74797056,0.199361,100,0.493,8.014,5.1833,1.2833,,15,1,6,8000,v3-three-variant,1,5,1.0
+e1,micro_run3,micro,200,120,20,5000,3.174,7.515,7.515,3.712714,14,1219,3.322,7.85,7.981,4.670279,86,1156,14,,,,,,,200,1.021,7.515,0.7167,0.1167,,15,1,6,8000,v3-three-variant,1,5,1.0

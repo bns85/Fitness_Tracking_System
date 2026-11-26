@@ -1,87 +1,65 @@
-# Benchmark Environment
+# Benchmark Environment — Three-Variant Architectural Evaluation
 
-Recorded: 2026-11-11 (before E1 runs). Update this file if hardware or limits change.
+Updated: 2026-11-26 (for Phase 3 benchmark trials).
 
-## Host machine
+---
+
+## 1. Host Machine Specifications
 
 | Item | Value |
 |---|---|
-| OS | Ubuntu 24.04.4 LTS on **WSL2** (kernel `6.6.87.2-microsoft-standard-WSL2`) |
+| OS | Ubuntu 24.04.4 LTS on **WSL2** / Windows 11 (kernel `6.6.87.2-microsoft-standard-WSL2`) |
 | CPU | Intel Core 7 150U — 6 cores / 12 threads |
-| RAM | 7.6 GiB total (≈5.4 GiB available at record time) |
+| RAM | 7.6 GiB total (≈5.4 GiB available) |
 | Swap | 2.0 GiB |
-| Disk (repo volume) | `C:\` 931 GiB, ~627 GiB free (Windows drive mounted in WSL) |
-| Docker | Docker Desktop with WSL2 backend; CLI via `DockerDesktop/resources/bin/docker.exe` |
+| Disk (repo volume) | `C:\` 931 GiB, ~620 GiB free |
+| Docker | Docker Desktop with WSL2 backend |
 
-**Note:** Docker Desktop itself runs on the Windows host; containers are Linux VMs. CPU/RAM numbers below are **container limits**, not host totals.
+*Note: CPU and RAM allocations below represent container constraints, executed on the standard host.*
 
-## Controlled variables (both variants equal)
+---
 
-| Variable | event | polling | Source |
-|---|---|---|---|
-| App CPU limit | **1.0 CPU** (`NanoCPUs=1000000000`) | **1.0 CPU** | `docker-compose.yml` `cpus: 1` |
-| `CACHE_TTL` | **300 s** | **300 s** | compose env |
-| `QUIET` | **1** | **1** | compose env |
-| MongoDB | `mongo-event` → `fitness_event` | `mongo-polling` → `fitness_polling` | separate containers |
-| Redis | `redis-event` | `redis-polling` | separate containers |
-| Images | `mongo:7`, `redis:7-alpine` | same | compose |
-| Poll interval | n/a (SSE push) | **5000 ms** (`POLL_INTERVAL_MS`) | compose / API |
-| Loadgen worker cap | 20 concurrent per variant | 20 | `WORKER_CAP` in `loadgen.js` |
+## 2. Controlled Variables (Round 1: Equal Total CPU)
 
-## Measurement stack
+| Parameter | Event-Driven (`event`) | Modular Monolith (`modular`) | Microservices (`micro`) | Source |
+|---|---|---|---|---|
+| **Total App CPU Limit** | **1.0 CPU** (`NanoCPUs=1e9`) | **1.0 CPU** (`NanoCPUs=1e9`) | **1.0 Total CPU** split across services: <br>• Gateway: 0.10<br>• Telemetry: 0.25<br>• Goal: 0.35<br>• Notification: 0.20<br>• Workout: 0.10 | `docker-compose.yml` |
+| **Memory Limit** | 512 MB | 512 MB | 512 MB per container | Compose manifests |
+| **`GOAL_CPU_MS`** | **10 ms** | **10 ms** | **10 ms** | `burnCpu(10)` in goal logic |
+| **`CACHE_TTL`** | **300 s** | **300 s** | **300 s** | Compose env |
+| **`QUIET`** | **1** | **1** | **1** | Suppress per-event console logs |
+| **Datastores** | `mongo-event`, `redis-event` | `mongo-modular`, `redis-modular` | `mongo-micro`, `redis-micro` | Dedicated containers |
+| **Database Engine** | `mongo:7`, `redis:7-alpine` | `mongo:7`, `redis:7-alpine` | `mongo:7`, `redis:7-alpine` | Identical images |
+| **Worker Cap** | 20 concurrent | 20 concurrent | 20 concurrent | `WORKER_CAP` in `loadgen.js` |
 
-| Service | Port | Notes |
-|---|---|---|
-| event-app | 5001 | Express + Mongoose + Redis + SSE |
-| polling-app | 5002 | Express + Mongoose + Redis + 5 s poll |
-| Prometheus | 9090 | 5 s scrape; `variant` labels on apps + loadgen jobs |
-| Grafana | 3000 | anonymous admin; dashboard uid `event-vs-polling` |
-| loadgen metrics | 9100 | host process `benchmark/loadgen.js` (not in compose) |
-| cAdvisor | — | **not installed** (panel empty on Docker Desktop; Linux only) |
+---
 
-## Mock-mode warning
+## 3. Services & Network Topology
 
-Both backends still contain a silent in-memory fallback if MongoDB is unreachable (`src/config/db.js`).  
-**A run is invalid unless logs show `MongoDB connected: mongo-*` with no mock message.** Any latency recorded without real Mongo **excludes database cost** — discard it.
+| Variant | Service | Host Port | Internal Port | Technology Stack |
+|---|---|---|---|---|
+| **Event-Driven** | `event-app` | `5001` | `5001` | Express + EventEmitter + SSE |
+| **Modular Monolith** | `modular-app` | `5011` | `5011` | Express + Module Facades + RedisHub SSE |
+| **Microservices** | `gateway` | `5021` | `5021` | Reverse Proxy / Static Frontend / Meta |
+| | `telemetry-service` | — | `5022` | Express + Mongoose (`fitness_telemetry`) |
+| | `goal-service` | — | `5023` | Express + Mongoose (`fitness_goals`) |
+| | `notification-service`| — | `5024` | Express + Mongoose (`fitness_notifications`) + SSE |
+| | `workout-service` | — | `5025` | Express + Mongoose (`fitness_workouts`) |
+| **Monitoring** | Prometheus | `9090` | `9090` | 5s scrape, labels: `variant`, `service` |
+| | Grafana | `3000` | `3000` | Anonymous admin dashboard |
+| | Loadgen Exporter | `9100` | `9100` | Exact CSV metrics exporter |
 
-## Load profile (E1 default)
+---
 
-| Step | Clients (each variant) | Hold | Warmup |
-|---|---|---|---|
-| 1 | 10 | 120 s | 20 s |
-| 2 | 50 | 120 s | 20 s |
-| 3 | 100 | 120 s | 20 s |
-| 4 | 200 | 120 s | 20 s |
+## 4. Load Profile (E1 Baseline)
 
-Three runs per level (`RUN_LABEL=run1..3`). Fresh `userId` per loadgen cycle; goal created before ingest (`target = cycleSteps`).
+| Step | Clients per Variant | Hold Duration | Warmup Duration | Think Time Range |
+|---|---|---|---|---|
+| 1 | 10 | 120 s | 20 s | 0.5 s – 2.0 s |
+| 2 | 50 | 120 s | 20 s | 0.5 s – 2.0 s |
+| 3 | 100 | 120 s | 20 s | 0.5 s – 2.0 s |
+| 4 | 200 | 120 s | 20 s | 0.5 s – 2.0 s |
 
-## Reproduce checks (run before every experiment block)
-
-```bash
-# 1. Stack healthy + real Mongo
-docker logs event-app 2>&1 | grep MongoDB     # must show mongo-event, no mock
-docker logs polling-app 2>&1 | grep MongoDB   # must show mongo-polling, no mock
-
-# 2. CPU limits still 1
-docker inspect event-app --format '{{.HostConfig.NanoCpus}}'    # 1000000000
-docker inspect polling-app --format '{{.HostConfig.NanoCpus}}'  # 1000000000
-
-# 3. Metrics live
-curl -s localhost:5001/metrics | grep db_operations_total | head -3
-curl -s localhost:5002/metrics | grep poll_responses_total | head -3
-```
-
-## Screenshot instructions (not images)
-
-Save under `benchmark/results/screenshots/` with names  
-`<variant>_<panel>_<users>users.png` (e.g. `event_delivery_100users.png`).
-
-| Experiment | Grafana panel group | Time range |
-|---|---|---|
-| E1 delivery | Row 1 → Notification Delivery Latency | middle of each 10/50/100/200 step |
-| E1 ingest | Row 2 → Ingest Latency + Ingest throughput | same steps |
-| E1 resources | Row 3 → CPU Cores, Memory RSS, CPU-ms per INGEST | same steps |
-| E1 mechanism | Row 4 → Empty-poll share, Poll intensity, Event mechanism | full run |
-| E2 ablation | Row 1 delivery + Row 4 poll intensity | per POLL_MS=1/5/15 s |
-| E3 high load | Row 1 + Row 2 + Event-loop lag | first degradation step |
-| E4 durability | not a Grafana panel — record Mongo vs HTTP 200 counts in CSV/notes | n/a |
+- **Repetitions:** 3 independent trials per load level (`run1`, `run2`, `run3`).
+- **Statistical Aggregation:** **MEDIAN** (per professor's guidelines), never arithmetic averages of percentiles.
+- **Datastore Gate:** Databases and Redis caches reset before every individual trial.

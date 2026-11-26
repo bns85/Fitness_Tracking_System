@@ -4,6 +4,12 @@ const mongoose = require("mongoose");
 // Initialize Prometheus Register
 const register = new client.Registry();
 
+// Set default labels for every metric on this target (variant, service)
+register.setDefaultLabels({
+  variant: process.env.VARIANT || "event",
+  service: process.env.SERVICE_NAME || "app",
+});
+
 // Collect default Node.js system and process metrics (includes nodejs_eventloop_lag_p99_seconds)
 client.collectDefaultMetrics({
   register,

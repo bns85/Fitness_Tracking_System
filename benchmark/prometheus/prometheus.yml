@@ -3,30 +3,80 @@ global:
   evaluation_interval: 5s
 
 scrape_configs:
+  # -------------------------------------------------------------
+  # Variant 1: Event-Driven (Port 5001)
+  # -------------------------------------------------------------
   - job_name: "event-app"
     static_configs:
       - targets: ["event-app:5001"]
         labels:
           variant: "event"
+          service: "app"
 
+  # -------------------------------------------------------------
+  # Variant 2: Modular Monolith (Port 5011)
+  # -------------------------------------------------------------
+  - job_name: "modular-app"
+    static_configs:
+      - targets: ["modular-app:5011"]
+        labels:
+          variant: "modular"
+          service: "app"
+
+  # -------------------------------------------------------------
+  # Variant 3: Microservices (Gateway 5021, Services 5022-5025)
+  # -------------------------------------------------------------
+  - job_name: "microservices"
+    static_configs:
+      - targets: ["micro-gateway:5021"]
+        labels:
+          variant: "micro"
+          service: "gateway"
+      - targets: ["micro-telemetry:5022"]
+        labels:
+          variant: "micro"
+          service: "telemetry"
+      - targets: ["micro-goal:5023"]
+        labels:
+          variant: "micro"
+          service: "goal"
+      - targets: ["micro-notification:5024"]
+        labels:
+          variant: "micro"
+          service: "notification"
+      - targets: ["micro-workout:5025"]
+        labels:
+          variant: "micro"
+          service: "workout"
+
+  # -------------------------------------------------------------
+  # Legacy Variant: Polling (Port 5002) - Kept for reference
+  # -------------------------------------------------------------
   - job_name: "polling-app"
     static_configs:
       - targets: ["polling-app:5002"]
         labels:
           variant: "polling"
+          service: "app"
 
-  # ONE job for the load generator. It runs on the laptop (host), not in Docker.
-  # Its metrics already carry a `variant` label, so no target label is added here.
+  # -------------------------------------------------------------
+  # Load Generator (Runs on host, port 9100)
+  # -------------------------------------------------------------
+  # Its metrics already carry a `variant` label.
   - job_name: "loadgen"
     static_configs:
       - targets: ["host.docker.internal:9100"]
 
-  # CSV results exporter: publishes the numbers from benchmark/results/*-levels.csv
-  # so Grafana can show exactly the same values as the CSV files and the report.
+  # -------------------------------------------------------------
+  # CSV Results Exporter (Runs on host, port 9101)
+  # -------------------------------------------------------------
   - job_name: "csv-results"
     static_configs:
       - targets: ["host.docker.internal:9101"]
 
+  # -------------------------------------------------------------
+  # cAdvisor Container Metrics (Linux only)
+  # -------------------------------------------------------------
   - job_name: "cadvisor"
     static_configs:
       - targets: ["cadvisor:8080"]

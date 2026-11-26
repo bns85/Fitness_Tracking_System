@@ -1,23 +1,22 @@
-version: "3.8"
-
 # ---------------------------------------------------------------------------
-# ECS351 benchmark stack — controlled variables (Task 1)
+# ECS351 benchmark stack — controlled variables (Task 1 & Task 7)
 #   * Separate MongoDB + Redis instance per variant (isolation)
-#   * CACHE_TTL=300 on BOTH apps (defaults were 300 event vs 30 polling)
-#   * QUIET=1 on BOTH apps (suppress per-event console noise during runs)
-#   * Each app container limited to 1 CPU
+#   * CACHE_TTL=300 on ALL apps
+#   * QUIET=1 on ALL apps (suppress per-event console noise during runs)
+#   * Monolith apps limited to 1.0 CPU; Microservices split 1.0 CPU total
 #   * Apps always connect to real Mongo/Redis (no mock fallback in this stack)
+#   * Profiles: event, modular, micro, polling (legacy)
 # ---------------------------------------------------------------------------
 
 services:
-  # ---------- Event-driven variant data stores ----------
+  # =========================================================================
+  # 1. EVENT-DRIVEN VARIANT (Port 5001)
+  # =========================================================================
   mongo-event:
     image: mongo:7
     container_name: mongo-event
     restart: unless-stopped
     ports:
-      # published so host-side test suites can reach the same DB as event-app
-      # (host 27017 is taken by the Windows mongod service -> use 27019)
       - "127.0.0.1:27019:27017"
     volumes:
       - mongo-event-data:/data/db
@@ -42,40 +41,6 @@ services:
     networks:
       - benchmark-net
 
-  # ---------- Polling variant data stores (LEGACY: only with --profile polling) ----------
-  mongo-polling:
-    image: mongo:7
-    container_name: mongo-polling
-    restart: unless-stopped
-    profiles: ["polling"]
-    ports:
-      # published so host-side test suites can reach the same DB as polling-app
-      - "127.0.0.1:27018:27017"
-    volumes:
-      - mongo-polling-data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-    networks:
-      - benchmark-net
-
-  redis-polling:
-    image: redis:7-alpine
-    container_name: redis-polling
-    restart: unless-stopped
-    profiles: ["polling"]
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 12
-    networks:
-      - benchmark-net
-
-  # ---------- Applications (1 CPU each) ----------
   event-app:
     build: ./Event_Driven/Event_Backend
     container_name: event-app
@@ -88,10 +53,12 @@ services:
       REDIS_PORT: "6379"
       CACHE_TTL: "300"
       QUIET: "1"
+      GOAL_CPU_MS: "10"
+      VARIANT: "event"
+      SERVICE_NAME: "app"
     ports:
       - "5001:5001"
     volumes:
-      # server serves ../../../Frontend_Shared relative to /app/src → /Frontend_Shared
       - ./Frontend_Shared:/Frontend_Shared:ro
     depends_on:
       mongo-event:
@@ -106,39 +73,272 @@ services:
     networks:
       - benchmark-net
 
-  polling-app:
-    build: ./Polling/Polling_Backend
-    container_name: polling-app
+  # =========================================================================
+  # 2. MODULAR MONOLITH VARIANT (Port 5011, profile: modular)
+  # =========================================================================
+  mongo-modular:
+    image: mongo:7
+    container_name: mongo-modular
     restart: unless-stopped
-    profiles: ["polling"]
-    cpus: 1
-    environment:
-      PORT: "5002"
-      MONGODB_URI: "mongodb://mongo-polling:27017/fitness_polling"
-      REDIS_HOST: "redis-polling"
-      REDIS_PORT: "6379"
-      CACHE_TTL: "300"
-      QUIET: "1"
-      POLL_INTERVAL_MS: "5000"
+    profiles: ["modular"]
     ports:
-      - "5002:5002"
+      - "127.0.0.1:27020:27017"
     volumes:
-      # server serves ../../Polling_Frontend relative to /app/src → /Polling_Frontend
-      - ./Polling/Polling_Frontend:/Polling_Frontend:ro
-    depends_on:
-      mongo-polling:
-        condition: service_healthy
-      redis-polling:
-        condition: service_healthy
+      - mongo-modular-data:/data/db
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5002/health"]
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - benchmark-net
+
+  redis-modular:
+    image: redis:7-alpine
+    container_name: redis-modular
+    restart: unless-stopped
+    profiles: ["modular"]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 12
     networks:
       - benchmark-net
 
-  # ---------- Measurement stack ----------
+  modular-app:
+    build:
+      context: ./Modular_Monolith/Modular_Backend
+    container_name: modular-app
+    restart: unless-stopped
+    profiles: ["modular"]
+    cpus: 1
+    mem_limit: 512m
+    environment:
+      PORT: "5011"
+      MONGO_URI: "mongodb://mongo-modular:27017/fitness_modular"
+      REDIS_URL: "redis://redis-modular:6379"
+      CACHE_TTL: "300"
+      QUIET: "1"
+      VARIANT: "modular"
+      SERVICE_NAME: "app"
+      GOAL_CPU_MS: "10"
+      FAULT_NOTIFICATIONS: "0"
+    ports:
+      - "5011:5011"
+    volumes:
+      - ./Frontend_Shared:/Frontend_Shared:ro
+    depends_on:
+      mongo-modular:
+        condition: service_healthy
+      redis-modular:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5011/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - benchmark-net
+
+  # =========================================================================
+  # 3. MICROSERVICES VARIANT (Gateway Port 5021, profile: micro)
+  # =========================================================================
+  mongo-micro:
+    image: mongo:7
+    container_name: mongo-micro
+    restart: unless-stopped
+    profiles: ["micro"]
+    volumes:
+      - mongo-micro-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - benchmark-net
+
+  redis-micro:
+    image: redis:7-alpine
+    container_name: redis-micro
+    restart: unless-stopped
+    profiles: ["micro"]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - benchmark-net
+
+  telemetry-service:
+    build:
+      context: ./Microservices
+      dockerfile: telemetry-service/Dockerfile
+    container_name: telemetry-service
+    restart: unless-stopped
+    profiles: ["micro"]
+    cpus: 0.25
+    mem_limit: 512m
+    environment:
+      PORT: "5022"
+      MONGO_URI: "mongodb://mongo-micro:27017/fitness_telemetry"
+      REDIS_URL: "redis://redis-micro:6379"
+      CACHE_TTL: "300"
+      QUIET: "1"
+      VARIANT: "micro"
+      SERVICE_NAME: "telemetry"
+      DOWNSTREAM_TIMEOUT_MS: "1000"
+      DOWNSTREAM_RETRIES: "1"
+    depends_on:
+      mongo-micro:
+        condition: service_healthy
+      redis-micro:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5022/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    networks:
+      - benchmark-net
+
+  goal-service:
+    build:
+      context: ./Microservices
+      dockerfile: goal-service/Dockerfile
+    container_name: goal-service
+    restart: unless-stopped
+    profiles: ["micro"]
+    cpus: 0.35
+    mem_limit: 512m
+    environment:
+      PORT: "5023"
+      MONGO_URI: "mongodb://mongo-micro:27017/fitness_goals"
+      REDIS_URL: "redis://redis-micro:6379"
+      CACHE_TTL: "300"
+      QUIET: "1"
+      VARIANT: "micro"
+      SERVICE_NAME: "goal"
+      GOAL_CPU_MS: "10"
+      DOWNSTREAM_TIMEOUT_MS: "1000"
+      DOWNSTREAM_RETRIES: "1"
+    depends_on:
+      mongo-micro:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5023/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    networks:
+      - benchmark-net
+
+  notification-service:
+    build:
+      context: ./Microservices
+      dockerfile: notification-service/Dockerfile
+    container_name: notification-service
+    restart: unless-stopped
+    profiles: ["micro"]
+    cpus: 0.20
+    mem_limit: 512m
+    environment:
+      PORT: "5024"
+      MONGO_URI: "mongodb://mongo-micro:27017/fitness_notifications"
+      REDIS_URL: "redis://redis-micro:6379"
+      CACHE_TTL: "300"
+      QUIET: "1"
+      VARIANT: "micro"
+      SERVICE_NAME: "notification"
+      DOWNSTREAM_TIMEOUT_MS: "1000"
+      DOWNSTREAM_RETRIES: "1"
+    depends_on:
+      mongo-micro:
+        condition: service_healthy
+      redis-micro:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5024/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    networks:
+      - benchmark-net
+
+  workout-service:
+    build:
+      context: ./Microservices
+      dockerfile: workout-service/Dockerfile
+    container_name: workout-service
+    restart: unless-stopped
+    profiles: ["micro"]
+    cpus: 0.10
+    mem_limit: 512m
+    environment:
+      PORT: "5025"
+      MONGO_URI: "mongodb://mongo-micro:27017/fitness_workouts"
+      REDIS_URL: "redis://redis-micro:6379"
+      CACHE_TTL: "300"
+      QUIET: "1"
+      VARIANT: "micro"
+      SERVICE_NAME: "workout"
+    depends_on:
+      mongo-micro:
+        condition: service_healthy
+      redis-micro:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5025/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    networks:
+      - benchmark-net
+
+  gateway:
+    build:
+      context: ./Microservices
+      dockerfile: gateway/Dockerfile
+    container_name: gateway
+    restart: unless-stopped
+    profiles: ["micro"]
+    cpus: 0.10
+    mem_limit: 256m
+    environment:
+      PORT: "5021"
+      TELEMETRY_URL: "http://telemetry-service:5022"
+      GOAL_URL: "http://goal-service:5023"
+      NOTIFICATION_URL: "http://notification-service:5024"
+      WORKOUT_URL: "http://workout-service:5025"
+      VARIANT: "micro"
+    ports:
+      - "5021:5021"
+    volumes:
+      - ./Frontend_Shared:/Frontend_Shared:ro
+    depends_on:
+      telemetry-service:
+        condition: service_healthy
+      goal-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+      workout-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5021/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    networks:
+      - benchmark-net
+
+  # =========================================================================
+  # 4. MEASUREMENT STACK (Prometheus & Grafana)
+  # =========================================================================
   prometheus:
     image: prom/prometheus:v2.54.1
     container_name: benchmark-prometheus
@@ -152,15 +352,9 @@ services:
     ports:
       - "9090:9090"
     extra_hosts:
-      # Linux needs this alias; Docker Desktop provides host.docker.internal itself.
       - "host.docker.internal:host-gateway"
       - "loadgen:host-gateway"
-      - "loadgen-event:host-gateway"
-      - "loadgen-polling:host-gateway"
       - "cadvisor:host-gateway"
-    depends_on:
-      - event-app
-      # polling-app is legacy (profile "polling"); Prometheus must not pull it in
     networks:
       - benchmark-net
 
@@ -189,4 +383,5 @@ networks:
 
 volumes:
   mongo-event-data:
-  mongo-polling-data:
+  mongo-modular-data:
+  mongo-micro-data:

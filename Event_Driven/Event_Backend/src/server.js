@@ -51,6 +51,16 @@ app.get("/metrics", async (req, res) => {
   }
 });
 
+// Architecture metadata endpoint
+app.get(["/api/meta", "/meta"], (req, res) => {
+  res.json({
+    name: "PulseFlow",
+    version: "1.0.0",
+    style: "event-driven",
+    variant: "event",
+  });
+});
+
 // Health check
 app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });

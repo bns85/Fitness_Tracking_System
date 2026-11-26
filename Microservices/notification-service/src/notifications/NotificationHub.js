@@ -96,10 +96,10 @@ class RedisHub extends NotificationHub {
     if (!redisUrl) throw new Error("REDIS_URL must be configured for RedisHub");
     this.channel = options.channel || "notifications";
     const redisOptions = {
-      connectTimeout: Number.parseInt(process.env.DOWNSTREAM_TIMEOUT_MS || "1000", 10),
-      commandTimeout: Number.parseInt(process.env.DOWNSTREAM_TIMEOUT_MS || "1000", 10),
+      connectTimeout: 10000,
+      lazyConnect: false,
       retryStrategy(attempt) {
-        if (attempt > 3) return null;
+        if (attempt > 5) return null;
         return Math.min(attempt * 200, 2000);
       },
     };
@@ -118,7 +118,9 @@ class RedisHub extends NotificationHub {
       }
       this.deliverLocal(payload.userId, payload.notification, payload.requestId);
     });
-    this.ready = this.subscriber.subscribe(this.channel);
+    this.ready = this.subscriber.subscribe(this.channel).catch((err) => {
+      this.logRedisError(err);
+    });
   }
 
   logRedisError(error) {
